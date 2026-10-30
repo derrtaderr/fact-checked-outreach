@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/signal-desk-wordmark-dark.png">
-    <img src="assets/signal-desk-wordmark-light.png" alt="signal-desk" width="500">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/fact-checked-outreach-wordmark-dark.png">
+    <img src="assets/fact-checked-outreach-wordmark-light.png" alt="fact-checked-outreach" width="760">
   </picture>
   <br>
   A signal-to-outreach pipeline where every decision can be inspected, replayed, or refused.
@@ -32,8 +32,8 @@ pluggable sender interface whose only reference adapter writes dry-run JSON.
 You need Node 20 or newer. There is nothing to install, no API key, and no network call.
 
 ```console
-$ git clone https://github.com/derrtaderr/signal-desk.git
-$ cd signal-desk
+$ git clone https://github.com/derrtaderr/fact-checked-outreach.git
+$ cd fact-checked-outreach
 $ npm test
 $ node bin/signal-desk.mjs run
 ```

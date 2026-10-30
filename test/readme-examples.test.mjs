@@ -194,7 +194,7 @@ test('the README states the node version the package requires', () => {
 });
 
 test('the README states the repository the clone line points at', () => {
-  assert.match(README, /git clone https:\/\/github\.com\/derrtaderr\/signal-desk\.git/);
+  assert.match(README, /git clone https:\/\/github\.com\/derrtaderr\/fact-checked-outreach\.git/);
 });
 
 test('the README scripts it tells you to run are real npm scripts', () => {

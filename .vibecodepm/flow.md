@@ -45,8 +45,8 @@ produce something worth looking at.
 One entry point. A terminal in a fresh clone.
 
 ```
-git clone https://github.com/derrtaderr/signal-desk.git
-cd signal-desk
+git clone https://github.com/derrtaderr/fact-checked-outreach.git
+cd fact-checked-outreach
 npm test
 node bin/signal-desk.mjs run
 ```
