@@ -323,15 +323,31 @@ function deadLetterIngestRefusals({ base, report, signals, run_id, at, out }) {
 // transport exists, so a refusal has fetched nothing, called no model and written nothing. It
 // counts parsed payloads, which is a conservative upper bound: the kernel counts the exact number
 // (leads that cleared ingest) and stops AT the ceiling whatever a caller checked first.
-function ceilingRefusal({ signals, maxLeads, err }) {
+//
+// The advice depends on where the ceiling came from (CEILING-FINDINGS-SPEC minor 1). An operator who
+// typed a low ceiling chose that cap, so telling them to raise it first argues against their own
+// decision; they are told the ceiling was theirs and offered the split first.
+function ceilingRefusal({ signals, maxLeads, fromFlag = false, err }) {
   if (signals.length <= maxLeads) return false;
+  const ceiling = fromFlag
+    ? `a ceiling of ${maxLeads} lead(s), which you set with --max-leads ${maxLeads}`
+    : `the default ceiling of ${maxLeads} lead(s)`;
   err(
-    `LEAD_CEILING_EXCEEDED: ${signals.length} signal(s) to run and a ceiling of ${maxLeads} lead(s). ` +
+    `LEAD_CEILING_EXCEEDED: ${signals.length} signal(s) to run and ${ceiling}. ` +
       `Every admitted lead bills its evidence fetches and ${MODEL_CALLS_PER_LEAD} model calls, up to ` +
       `${leadRequests({}).modelCalls.worst} model attempts with retries, so the run was refused before it ` +
       'started. Nothing was fetched, no model was called and no run was written.',
   );
-  err(`Split the signals across runs, or raise the ceiling on purpose with --max-leads ${signals.length}.`);
+  // CEILING-FINDINGS-SPEC minor 3: the count is an upper bound, and the operator should know why.
+  err(
+    'This check counts every parsed payload, including any ingest would refuse for a bad signature, ' +
+      'so it can count more than would bill.',
+  );
+  err(
+    fromFlag
+      ? `Split the signals into runs of at most ${maxLeads}, or type --max-leads ${signals.length} only if you mean to bill for all ${signals.length}.`
+      : `Split the signals across runs, or raise the ceiling on purpose with --max-leads ${signals.length}.`,
+  );
   return true;
 }
 
@@ -346,7 +362,7 @@ function maxLeadsFrom(args, err) {
   }
 }
 
-async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS }) {
+async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS, fromFlag = false }) {
   // Credentials first, before anything is read or written. See the note above.
   let key;
   let secret;
@@ -358,7 +374,7 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     return 2;
   }
 
-  if (ceilingRefusal({ signals, maxLeads, err })) return 2;
+  if (ceilingRefusal({ signals, maxLeads, fromFlag, err })) return 2;
 
   const transport = httpTransport ?? nodeTransport();
   const clock = recordingClock();
@@ -466,7 +482,10 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
     return 2;
   }
 
-  return executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads });
+  return executeLive({
+    signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads,
+    fromFlag: flagPresent(args, '--max-leads'),
+  });
 }
 
 // --- run --live --plan ------------------------------------------------------------------
@@ -573,6 +592,7 @@ async function verbDlq(context) {
       httpTransport: context.httpTransport,
       at: context.now(),
       maxLeads,
+      fromFlag: flagPresent(args, '--max-leads'),
     });
   }
 

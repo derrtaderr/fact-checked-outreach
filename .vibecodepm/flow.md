@@ -191,8 +191,8 @@ contacted a stranger's server on the strength of a run it could not finish.
 | No signal secret | `LIVE_SECRET_MISSING`, naming the variable and why it is not optional | 2 |
 | No signals directory | the path it looked for, plus `--signals <dir>` and a pointer to the README | 2 |
 | Empty signals directory | "holds no .json payload files, so there is nothing to run" | 2 |
-| More signals than the lead ceiling | `LEAD_CEILING_EXCEEDED`, naming the count, the ceiling and `--max-leads <n>`; nothing fetched, nothing written | 2 |
-| `--max-leads` of 0, negative, non-numeric or missing | `LEAD_CEILING_INVALID`, before the credentials are read | 2 |
+| More signals than the lead ceiling | `LEAD_CEILING_EXCEEDED`, naming the count, the ceiling and whether it was the default or the operator's own `--max-leads`; that the count includes badly signed payloads; splitting first when the ceiling was typed, `--max-leads <n>` otherwise; nothing fetched, nothing written | 2 |
+| `--max-leads` of 0, negative, non-numeric, missing, or spelled with a sign, leading zero or exponent | `LEAD_CEILING_INVALID`, saying it takes plain digits, before the credentials are read | 2 |
 | `--max-leads` on a fixture `run`, or on `dlq` without `--replay` | why the flag does not apply there, and the invocation that takes it | 2 |
 | `run --live --plan` | whether the run would start or be refused, the per-lead URLs and the request counts; no key needed, nothing fetched or written | 0 |
 | `--plan` on a fixture `run` | why it does not apply there, and `run --live --plan` | 2 |
