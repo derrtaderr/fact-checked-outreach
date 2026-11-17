@@ -421,7 +421,8 @@ model is called, and writes nothing. That refusal is free, so it doubles as the 
 separate dry run. `dlq --replay` is held to the same ceiling and takes the same flag, because a
 re-fed lead bills like a fresh one. A ceiling of zero, a negative one, or anything that is not a
 whole number refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
-rather than being ignored, since a fixture run bills nothing.
+rather than being ignored, since a fixture run bills nothing. `--max-leads` given twice refuses with
+`FLAG_REPEATED` rather than quietly running under the first value, and so does any other value flag.
 
 Behind the start check, the kernel enforces the ceiling itself. A lead admitted past it never
 reaches `enrich` or anything after it, and gets its own `REFUSE` line with `LEAD_CEILING_REACHED`

@@ -128,6 +128,7 @@ they are refusals of the OPERATOR's configuration rather than of a lead.
 | **The live approval loop closes** | run --live -> approve -> run --live reaches handoff and writes an artifact | `test/live-cli.test.mjs` |
 | **No credential is written down** | a canary for EACH secret is grepped across every written byte, `inputs.json` included, with a planted-value control per canary | `test/key-hygiene.test.mjs` |
 | **No invocation silently becomes another** | unknown and `--flag=value` forms exit 2; every accepted flag still works | `test/live-cli.test.mjs` |
+| **A value flag is read once, never guessed** | a repeated value flag exits 2 `FLAG_REPEATED` and a missing value exits 2 `FLAG_VALUE_MISSING`, with zero transport calls and nothing written | `test/cli-flag-values.test.mjs` |
 | **Replay claims only what it checked** | three outcomes by what the replayer has, each asserted separately | `test/live-secret.test.mjs` |
 | **No fixture domain is contacted in live mode** | the fetched URL list is asserted against the payload's own citations | `test/live-cli.test.mjs` |
 | **A live run cannot bill past its lead ceiling** | over the ceiling, exit 2 `LEAD_CEILING_EXCEEDED` with zero transport calls and an empty runs directory; a bad ceiling exits 2 `LEAD_CEILING_INVALID` | `test/cli-ceiling.test.mjs` |
