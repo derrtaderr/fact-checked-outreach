@@ -69,7 +69,8 @@ Usage:
 
 Flags, per verb. Anything else is refused rather than ignored, so no invocation can quietly
 become a different one than you typed. Write them as "--flag value", never "--flag=value",
-and give each value flag once: a repeated one is refused rather than guessed at.
+and give each value flag once: a repeated one is refused rather than guessed at. A flag typed with
+one dash or a typographic dash (-plan, —plan) is refused, and so is any word a verb does not take.
 
   run       --live, --signals <dir>, --max-leads <n>, --plan
   approve   --by <name>, --note <text>
@@ -174,6 +175,13 @@ async function verbRun({ args, out, err, env, cwd }) {
   if (flagPresent(args, '--plan')) {
     err('--plan previews a live run, and a fixture run bills nothing, so there is nothing to preview.');
     err('Did you mean: node bin/signal-desk.mjs run --live --plan');
+    return 2;
+  }
+  // The same shape, found by the row 80 ship-check: --signals without --live ran the fixture demo and
+  // ignored the folder, exit 0, so the operator believed their signals had been run.
+  if (flagPresent(args, '--signals')) {
+    err('--signals names the folder a live run reads, and a fixture run reads the committed corpus.');
+    err('Did you mean: node bin/signal-desk.mjs run --live --signals <dir>');
     return 2;
   }
   const base = runsDir(env, cwd);
@@ -1053,13 +1061,57 @@ const ACCEPTED_FLAGS = Object.freeze({
 // Flags that take a value, so the value is not mistaken for a flag or for a positional argument.
 const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note', '--max-leads']);
 
+// EVERY TOKEN IS ACCOUNTED FOR. docs/CEILING-FINDINGS-SPEC.md, fix wave 1, B1.
+//
+// The check above used to skip any token that did not start with "--", so `run --live -plan`,
+// `run --live —plan` (an em dash, which editors and chat apps substitute for two hyphens) and
+// `run --live plan` all ran the REAL billed run. A mistyped preview was the bill. Now a token is an
+// accepted flag, an accepted flag's value, or the verb's one positional argument in first place, and
+// anything else refuses. What each verb takes in first place:
+const POSITIONAL = Object.freeze({
+  run: null,
+  queue: null,
+  dlq: null,
+  approve: 'the draft hash or lead id',
+  reject: 'the draft hash or lead id',
+  explain: 'the lead id',
+  replay: 'the run id',
+  dashboard: 'the run id',
+});
+
+// A hyphen-minus, an en dash, an em dash or a minus sign, followed by something. None of these is a
+// flag this CLI accepts, and none is a draft hash, lead id or run id either.
+const DASH_LIKE = /^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/u;
+
+function strayToken(verb, arg, index) {
+  if (DASH_LIKE.test(arg)) {
+    const name = arg.replace(/^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]+/u, '');
+    return (
+      `unknown flag ${arg}. Flags are written with two ASCII hyphens, like --${name}. ` +
+      'Nothing was read, fetched or written.'
+    );
+  }
+  const positional = POSITIONAL[verb];
+  if (index === 0 && positional) return null;
+  return (
+    `unexpected argument ${JSON.stringify(arg)}: ${verb} takes ` +
+    `${positional ? `one positional argument, ${positional}, written first` : 'no positional argument'}. ` +
+    'Nothing was read, fetched or written.'
+  );
+}
+
 function unknownFlag(verb, args) {
   const accepted = ACCEPTED_FLAGS[verb];
   if (accepted === undefined) return null;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (typeof arg !== 'string' || !arg.startsWith('--')) continue;
+    if (typeof arg !== 'string') continue;
+    if (!arg.startsWith('--')) {
+      const stray = strayToken(verb, arg, index);
+      if (stray !== null) return stray;
+      continue;
+    }
 
     // `--flag=value` is refused even when `--flag` is accepted, rather than being parsed. Supporting
     // one spelling and silently ignoring the other is how `--live=true` became a fixture run; a CLI

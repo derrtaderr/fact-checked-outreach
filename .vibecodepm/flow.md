@@ -198,6 +198,8 @@ contacted a stranger's server on the strength of a run it could not finish.
 | `--plan` on a fixture `run` | why it does not apply there, and `run --live --plan` | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
 | Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
+| A flag typed with one dash or a typographic dash (`-plan`, `—plan`), or a word the verb does not take (`run --live plan`, `queue extra`) | `unknown flag`, saying flags take two ASCII hyphens, or `unexpected argument`, naming what the verb does take; nothing read, fetched or written | 2 |
+| `run --signals <dir>` without `--live` | why it does not apply to a fixture run, and `run --live --signals <dir>` | 2 |
 | A value flag given twice (`--max-leads 500 --max-leads 5`) | `FLAG_REPEATED`, naming the flag and every value; nothing read, fetched or written | 2 |
 | A value flag with no value (`--signals` alone, or followed by another flag) | `FLAG_VALUE_MISSING`, naming the flag; never a fallback to the default (`--max-leads` keeps `LEAD_CEILING_INVALID`) | 2 |
 
@@ -256,6 +258,13 @@ because the first value won silently, so a run could bill above the last ceiling
 A repeated value flag now exits 2 with `FLAG_REPEATED`, and a value flag with no value (`--signals`
 alone used to fall back to `./signals`) exits 2 with `FLAG_VALUE_MISSING`. Spec:
 `docs/CEILING-FINDINGS-SPEC.md`.
+
+And every other token. The flag check used to skip anything not starting with `--`, so
+`run --live -plan`, `run --live —plan` (an em dash) and `run --live plan` all ran the real, billed
+run, and `-max-leads 3` ran under the default ceiling. Each verb now takes its accepted flags, their
+values, and at most one positional argument in first place (the id for `approve`, `reject` and
+`explain`, the run id for `replay` and `dashboard`, nothing for `run`, `queue` and `dlq`). Anything
+else exits 2 before anything is read.
 
 ### The lead ceiling, added for system map §4
 

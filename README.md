@@ -449,6 +449,8 @@ re-fed lead bills like a fresh one. The ceiling is written as plain digits, 1 or
 (`+5`, `007`, `1e3`) refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
 rather than being ignored, since a fixture run bills nothing. `--max-leads` given twice refuses with
 `FLAG_REPEATED` rather than quietly running under the first value, and so does any other value flag.
+A flag typed with one dash or a typographic dash (`-plan`, `—plan`) or a stray word (`plan`) is
+refused too, so a mistyped `--plan` can never become the billed run.
 
 Behind the start check, the kernel enforces the ceiling itself. A lead admitted past it never
 reaches `enrich` or anything after it, and gets its own `REFUSE` line with `LEAD_CEILING_REACHED`
