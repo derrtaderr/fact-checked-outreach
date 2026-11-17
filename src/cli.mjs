@@ -37,7 +37,15 @@ import {
   SECRET_VARIABLE,
 } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
-import { MODEL_CALLS_PER_LEAD, leadRequests, runRequests } from './live/cost.mjs';
+import { MODEL_CALLS_PER_LEAD, leadRequests, runRequests, isFetchableUrl } from './live/cost.mjs';
+import { printable, maskUrl } from './terminal.mjs';
+
+// Payload-derived text reaching the terminal goes through these (fix wave 2, N-A). `shown` is for
+// short values such as ids and URLs and truncates at a stated length; `shownWhole` escapes only, for
+// details whose full text an operator needs.
+const shown = (value) => printable(value);
+const shownWhole = (value) => printable(value, { max: Infinity });
+const shownUrl = (value) => printable(maskUrl(value));
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
   loadDecisions,
@@ -278,7 +286,8 @@ function reportRun({ out, run_id, report, show, dir, handoffDir, handed, mode })
 
   for (const lead of report.leads) {
     const reason = lead.reason_codes.length > 0 ? lead.reason_codes.join(',') : '';
-    out(`  ${pad(lead.lead_id, 22)} ${pad(lead.final_stage, 9)} ${pad(lead.final_status, 12)} ${reason}`);
+    // An ingest-refused lead is filed under the payload's own id, so this can be a stranger's text.
+    out(`  ${pad(shown(lead.lead_id), 22)} ${pad(lead.final_stage, 9)} ${pad(lead.final_status, 12)} ${reason}`);
   }
 
   out('');
@@ -551,12 +560,21 @@ function planLive({ args, signalsDir, maxLeads, out, err }) {
     const lead = leadRequests(signal);
     // The URLs themselves, not a count (fix wave 1, M1): what an operator checks before paying for
     // a fetch is WHERE it goes.
-    out(`    ${signal.id ?? signal.source_file}, ${lead.urls} evidence URL(s)`);
+    // Every payload-derived value is escaped, truncated and userinfo-masked (fix wave 2, N-A, N-D,
+    // N-E): this is where an operator reads untrusted payloads, so it must not be forgeable.
+    out(`    ${shown(signal.id ?? signal.source_file)}, ${lead.urls} evidence URL(s)`);
     const payload = signal?.payload ?? {};
-    for (const url of Array.isArray(payload.sources) ? payload.sources : []) out(`      source           ${url}`);
+    for (const url of Array.isArray(payload.sources) ? payload.sources : []) {
+      const note = isFetchableUrl(url)
+        ? ''
+        : typeof url === 'string'
+          ? '  (not https: refused before any request, not counted)'
+          : '  (refused before any request, not counted)';
+      out(`      source           ${shownUrl(url)}${note}`);
+    }
     out(
       typeof payload.identity_source === 'string' && payload.identity_source.trim() !== ''
-        ? `      identity source  ${payload.identity_source}`
+        ? `      identity source  ${shownUrl(payload.identity_source)}`
         : '      no identity source named',
     );
   }
@@ -637,11 +655,11 @@ async function verbDlq(context) {
   out(`${letters.length} dead letter(s) in ${relative(cwd, dlqPath(base)) || dlqPath(base)}`);
   out('');
   for (const letter of letters) {
-    out(`  ${letter.file}`);
-    out(`    reason    ${letter.reason}`);
-    out(`    signal    ${letter.signal_id ?? '(never parsed)'}`);
-    out(`    from      ${letter.source ?? '(unknown)'}`);
-    if (letter.detail) out(`    detail    ${letter.detail}`);
+    out(`  ${shown(letter.file)}`);
+    out(`    reason    ${shown(letter.reason)}`);
+    out(`    signal    ${letter.signal_id == null ? '(never parsed)' : shown(letter.signal_id)}`);
+    out(`    from      ${letter.source == null ? '(unknown)' : shown(letter.source)}`);
+    if (letter.detail) out(`    detail    ${shownWhole(letter.detail)}`);
     out('');
   }
   out('  Each one keeps the exact bytes it arrived as, so a fix at the sender can be proven');
@@ -712,12 +730,12 @@ async function verbQueue({ out, err, env, cwd }) {
   out(`${drafts.length} draft(s) awaiting a human`);
   out('');
   for (const draft of drafts) {
-    out(`  ${draft.draft_hash}`);
-    out(`    lead     ${draft.lead_id}`);
-    out(`    to       ${draft.to}`);
-    out(`    subject  ${draft.subject}`);
-    out(`    owner    ${draft.owner}`);
-    out(`    status   ${draft.reason}`);
+    out(`  ${shown(draft.draft_hash)}`);
+    out(`    lead     ${shown(draft.lead_id)}`);
+    out(`    to       ${shown(draft.to)}`);
+    out(`    subject  ${shown(draft.subject)}`);
+    out(`    owner    ${shown(draft.owner)}`);
+    out(`    status   ${shown(draft.reason)}`);
     out('');
   }
   out('  Approve with: node bin/signal-desk.mjs approve <draft-hash>');
@@ -787,10 +805,10 @@ async function verbDecide(decision, { args, out, err, env, cwd, now }) {
 
   out(`${decision === 'approve' ? 'approved' : 'rejected'} ${draft.draft_hash}`);
   out('');
-  out(`  lead     ${draft.lead_id}`);
-  out(`  to       ${draft.to}`);
-  out(`  subject  ${draft.subject}`);
-  out(`  by       ${written.by}`);
+  out(`  lead     ${shown(draft.lead_id)}`);
+  out(`  to       ${shown(draft.to)}`);
+  out(`  subject  ${shown(draft.subject)}`);
+  out(`  by       ${shown(written.by)}`);
   out('');
   out(`  recorded in ${relative(cwd, decisionsPath(runsDir(env, cwd))) || decisionsPath(runsDir(env, cwd))}`);
   out('  This decision covers that exact draft. Edit the text and it stops applying.');
@@ -816,19 +834,20 @@ async function verbExplain({ args, out, err, env, cwd }) {
 
   const forLead = entries.filter((entry) => entry.lead_id === leadId);
   if (forLead.length === 0) {
-    err(`lead ${leadId} not found in the latest ledger`);
+    err(`lead ${shown(leadId)} not found in the latest ledger`);
     return 2;
   }
 
-  out(`lead ${leadId}`);
-  out(`run  ${forLead[0].run_id}`);
+  out(`lead ${shown(leadId)}`);
+  out(`run  ${shown(forLead[0].run_id)}`);
   out('');
 
   for (const entry of forLead) {
     out(`  ${entry.ts}  ${pad(entry.stage, 9)} ${pad(entry.verdict, 12)} ${entry.actor}`);
     if (entry.reason_codes.length > 0) out(`      reasons   ${entry.reason_codes.join(', ')}`);
-    if (entry.detail) out(`      detail    ${entry.detail}`);
-    if (entry.evidence_refs.length > 0) out(`      evidence  ${entry.evidence_refs.join('\n                ')}`);
+    // A detail or an evidence ref can quote a payload or a source's answer, so both are escaped.
+    if (entry.detail) out(`      detail    ${shownWhole(entry.detail)}`);
+    if (entry.evidence_refs.length > 0) out(`      evidence  ${entry.evidence_refs.map(shownWhole).join('\n                ')}`);
   }
 
   const last = forLead[forLead.length - 1];
