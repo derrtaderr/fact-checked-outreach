@@ -256,3 +256,21 @@ where a fetch goes is what an operator checks before paying for it.
 Over its ceiling, `dlq --replay` advised splitting the signals into runs. It re-feeds the whole
 queue at once and has no way to split, so the advice now says that, and that replaying them takes
 `--max-leads <count>`, which bills for every letter. `run --live` keeps the split advice.
+
+## I4. What a second `run --live` costs
+
+Documented, not fixed: the fix is the owner's decision (see the open question above). A README
+subsection in the live-mode section, "What a second run costs", and the flow.md live approval loop
+now say the same thing. After `approve`, the next `run --live` re-runs every lead in the folder
+through enrich, draft and gate, so it bills all of them again. If the approved lead's redraft hashes
+differently, it parks again as `APPROVAL_STALE`. The ceiling bounds each run, not the number of runs.
+flow.md's line "the approved draft is the only thing that moves" is corrected.
+
+## M2, M3, M4, M7. Freshness
+
+- M2: the system-map baseline is re-agreed once, at the final head of this wave, so it lists every
+  module, edge and test file on disk.
+- M3: the section 4 citations in `.vibecodepm/system.md` are corrected, and a test now reads each
+  cited line and checks it is the line described, so they cannot go stale silently again.
+- M4: the README says `dlq --replay` takes `--max-leads`, not "the same flag", which read as `--plan`.
+- M7: the flow.md and metrics.md frontmatter name this build and today's date instead of the M4 lane.
