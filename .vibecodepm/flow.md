@@ -442,7 +442,7 @@ Each line of a tick's output is one lead in one of these states.
 | `CLOCK_RUNNING` | assigned, inside the window; also what a re-delivered event shows | nothing is called |
 | `TOUCHED` | activity was logged after the owner was written | the clock stops for good |
 | `OWNER_CHANGED` | a person changed the owner in HubSpot, or removed the contact | the clock stops; the tool never fights a person |
-| `NO_REP_RESPONDED` | every rep in the pool had it untouched | it stays with the last rep and needs a person |
+| `NO_REP_RESPONDED` | every rep in the pool had it untouched | it stays with the last rep and needs a person; it is read and listed again on every tick, and in `--plan`, until a person gives it an owner, logs activity on it, or deletes the contact in HubSpot |
 | `REASSIGN_WAITING` | past the window, but every untried rep is away or at capacity (`NO_ELIGIBLE_REP`), or the lead's pool was removed from the rotation file (`NO_ROTATION_FOR_POOL`) or emptied (`ROTATION_EMPTY`) | stays with the current rep and nothing is journaled; the next tick tries again, so restoring the pool resumes it |
 | `CLOCK_CHECK_FAILED` | HubSpot could not be read at a clock check | nothing is reassigned on a guess; the next tick reads again |
 | `CRM_PENDING` | HubSpot did not take the owner | nobody is told; the next tick writes the same rep again, reading their `hubspot_owner_id` from the rotation file as it is then. A refusal that cannot clear on its own (`HUBSPOT_INVALID_OWNER`, `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING`) says what to fix instead of promising the retry works |
@@ -490,10 +490,18 @@ recorded comes back as `ALREADY_OWNED` if the rotation now picks someone else, s
 over either. A trailing blank line from an editor is not a mismatch.
 
 **`SLACK_UNCONFIRMED` that stays unconfirmed.** The output names the marker; look for it in the
-rep's messages. Granting the bot `im:history` lets the next tick settle it.
+rep's messages. A live tick checks the Slack token's scopes first (`auth.test`), so a token without
+`im:history` is refused `SLACK_SCOPE_MISSING`, exit 2, before any write, instead of leaving leads
+that can never be confirmed.
 
-**`NO_REP_RESPONDED`.** A person decides; reassign in HubSpot directly and the tool will not
-interfere.
+**`NO_REP_RESPONDED`.** A person decides. Give the lead an owner in HubSpot, log activity on it, or
+delete the contact; the next tick reads it, records what the person did, and stops listing it.
+
+**Exit codes.** 0, the tick ran and nothing needs a person. 1, the journal was refused. 2, refused
+before the tick (flags, tokens, `SLACK_SCOPE_MISSING`, the rotation file, no run). 3,
+`INBOUND_LOCKED`. 4, the tick ran and at least one lead is `CRM_PENDING`, `SLACK_PENDING`,
+`SLACK_UNCONFIRMED`, `CLOCK_CHECK_FAILED`, `REFUSED` or `NO_REP_RESPONDED`, so a scheduled run can
+alarm.
 
 ## What the user cannot do in M4
 

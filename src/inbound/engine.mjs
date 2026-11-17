@@ -351,10 +351,15 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     say(key, lead.lead_id, pick.note === undefined ? outcome : { ...outcome, detail: `${outcome.detail}. ${pick.note}` });
   }
 
-  // 3. The clock, for every assignment whose rep has been told and whose clock is still running.
+  // 3. The clock, for every assignment whose rep has been told and whose clock is still running; and
+  // every lead parked NO_REP_RESPONDED, which is listed on every tick until a person acts on it.
   for (const lead of state().leads.values()) {
     // Already reported this tick (just assigned, or resumed): its clock started moments ago.
     if (outcomes.has(lead.key)) continue;
+    if (lead.stopped?.type === 'exhausted') {
+      say(lead.key, lead.lead_id, await parked(lead.key));
+      continue;
+    }
     const attempt = latest(lead);
     if (lead.stopped !== null || attempt.slack === null) continue;
     const deadline = Date.parse(attempt.slack.at) + rotation.response_minutes * 60000;
@@ -368,6 +373,44 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       continue;
     }
     say(lead.key, lead.lead_id, await expire(lead.key));
+  }
+
+  // A parked lead: read it, and stop listing it once a person has given it an owner, logged activity
+  // or removed the contact. Until then it is listed again, with the way out.
+  async function parked(key) {
+    const lead = state().leads.get(key);
+    const attempt = latest(lead);
+    const since = lead.stopped.at;
+    const wayOut = 'To clear it, act on the contact in HubSpot: give it an owner, log activity on it, or delete it. The next tick sees that and stops listing it';
+    let seen;
+    try {
+      seen = await hubspot.read({ email: lead.brief.to });
+    } catch (error) {
+      return {
+        status: 'NO_REP_RESPONDED',
+        code: error?.code ?? 'HUBSPOT_UNAVAILABLE',
+        rep: attempt.rep_id,
+        detail: `parked since ${since} with ${attempt.rep_id}; HubSpot could not be read to see whether a person acted (${scrubbed(scrub, error)}). ${wayOut}`,
+      };
+    }
+    const written = attempt.crm.owner_id;
+    if (seen === null || seen.ownerId !== written) {
+      const detail = seen === null
+        ? 'the parked lead\'s contact was removed from HubSpot by a person; it is no longer listed'
+        : `a person gave the parked lead to ${seen.ownerId} in HubSpot; it is no longer listed`;
+      write({ type: 'owner_changed', key, attempt: attempt.attempt, owner_seen: seen?.ownerId ?? null, detail });
+      return { status: 'OWNER_CHANGED', rep: attempt.rep_id, detail };
+    }
+    if (seen.lastActivityAt && Date.parse(seen.lastActivityAt) >= Date.parse(attempt.crm.at)) {
+      const detail = `activity was logged on the parked lead at ${seen.lastActivityAt}; it is no longer listed`;
+      write({ type: 'touched', key, attempt: attempt.attempt, activity_at: seen.lastActivityAt, detail });
+      return { status: 'TOUCHED', rep: attempt.rep_id, detail };
+    }
+    return {
+      status: 'NO_REP_RESPONDED',
+      rep: attempt.rep_id,
+      detail: `parked since ${since}: every rep in "${lead.pool}" left it untouched, and it is still with ${attempt.rep_id}. ${wayOut}`,
+    };
   }
 
   // The window has passed. Read HubSpot, and only an observed "untouched" moves the lead.
@@ -409,7 +452,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       // its own code, journals nothing, and the lead resumes the moment the pool is back.
       const pool = rotation.pools[lead.pool] ?? [];
       if (pool.length > 0 && pool.every((rep) => tried.includes(rep.id))) {
-        const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide`;
+        const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide. It is listed on every tick until a person gives it an owner, logs activity on it, or deletes it in HubSpot`;
         write({ type: 'exhausted', key, attempt: attempt.attempt, detail });
         return { status: 'NO_REP_RESPONDED', rep: attempt.rep_id, detail };
       }

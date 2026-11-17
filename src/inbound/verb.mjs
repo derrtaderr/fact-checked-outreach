@@ -212,6 +212,42 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
     return planTick({ out, rotation, journal, events, refused, at: now(), runId, journalPath: show(journalPath), recover });
   }
 
+  // Live: the adapters, and the Slack token's scopes, checked before anything is written. Without
+  // im:history a post whose outcome is unknown can never be looked up, so it would park as
+  // SLACK_UNCONFIRMED for good; that is found out here, not after a HubSpot write.
+  let adapters = null;
+  let scopeNote = null;
+  if (live) {
+    const scrub = secretScrubber([hubspotToken, slackToken]);
+    const transport = makeTransport();
+    adapters = {
+      scrub,
+      hubspot: createHubSpotAdapter({ transport, token: hubspotToken, scrub }),
+      slack: createSlackAdapter({ transport, token: slackToken, scrub }),
+    };
+    let scopes;
+    try {
+      scopes = await adapters.slack.scopes();
+    } catch (error) {
+      err(`${error?.code ?? 'SLACK_UNREACHABLE'}: the Slack token could not be checked at auth.test before the tick (${printable(scrub(String(error?.message ?? error)), { max: Infinity })}). Nothing was written.`);
+      return 2;
+    }
+    if (scopes === null) {
+      scopeNote = 'Slack did not report the token\'s scopes, so chat:write, im:write and im:history were not checked before this tick';
+    } else {
+      const missing = SLACK_SCOPES.filter((scope) => !scopes.includes(scope));
+      if (missing.length > 0) {
+        err(
+          `SLACK_SCOPE_MISSING: the Slack token lacks ${missing.join(', ')}. inbound needs ${SLACK_SCOPES.join(', ')}: ` +
+            'chat:write to post, im:write to open the DM, and im:history to look for a post whose outcome is unknown ' +
+            'before posting again (without it such a lead could never be confirmed). Add the scope to the Slack app, ' +
+            'reinstall it, and export the new token. Nothing was read from the journal and nothing was written.',
+        );
+        return 2;
+      }
+    }
+  }
+
   // One tick at a time per state directory, held from before the journal is read until after the last
   // write. A second process stops here, having written nothing.
   let lock;
@@ -224,16 +260,29 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
     return EXIT_LOCKED;
   }
   try {
-    return await lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock, recover });
+    return await lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, adapters, scopeNote, now, at, lock, recover });
   } finally {
     lock.release();
   }
 }
 
-/** Exit codes of `inbound`, documented in the README, "Inbound last mile". */
+/**
+ * Exit codes of `inbound`, documented in the README, "Inbound last mile":
+ *   0  the tick ran and nothing needs a person
+ *   1  the journal was refused (JOURNAL_TAMPERED, JOURNAL_HEAD_MISMATCH); nothing was called
+ *   2  refused before the tick (flags, tokens, Slack scopes, rotation file, no run); nothing was written
+ *   3  INBOUND_LOCKED: another tick holds the state directory; nothing was written
+ *   4  the tick ran, and at least one lead needs a person (NEEDS_A_PERSON below)
+ */
 export const EXIT_LOCKED = 3;
+export const EXIT_NEEDS_A_PERSON = 4;
+export const SLACK_SCOPES = Object.freeze(['chat:write', 'im:write', 'im:history']);
 
-async function lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock, recover }) {
+// A call failed, a lead was assigned to nobody, or a lead is parked for a person. Each of these stays
+// as it is until a person acts or the next tick succeeds, so a scheduled run must be able to alarm.
+export const NEEDS_A_PERSON = Object.freeze(['CRM_PENDING', 'SLACK_PENDING', 'SLACK_UNCONFIRMED', 'CLOCK_CHECK_FAILED', 'REFUSED', 'NO_REP_RESPONDED']);
+
+async function lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, adapters, scopeNote, now, at, lock, recover }) {
   let journal;
   try {
     journal = Journal.open(journalPath, { accept: recover });
@@ -248,10 +297,7 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
   let save = () => {};
   let scrub = (text) => text;
   if (live) {
-    scrub = secretScrubber([hubspotToken, slackToken]);
-    const transport = makeTransport();
-    hubspot = createHubSpotAdapter({ transport, token: hubspotToken, scrub });
-    slack = createSlackAdapter({ transport, token: slackToken, scrub });
+    ({ hubspot, slack, scrub } = adapters);
   } else {
     const owners = Object.values(rotation.pools).flat().map((rep) => rep.hubspot_owner_id);
     const read = (name) => (existsSync(join(stateDir, name)) ? JSON.parse(readFileSync(join(stateDir, name), 'utf8')) : undefined);
@@ -279,6 +325,7 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
   if (lock.broke) out(`  lock      ${lock.broke}`);
   if (report.repaired) out(`  journal   ${report.repaired}`);
   if (journal.recovered) out(`  recover   ${journal.recovered}`);
+  if (scopeNote) out(`  slack     ${scopeNote}`);
   out('');
   const outcomes = [...refused, ...report.outcomes];
   if (outcomes.length === 0) out('  nothing to do: no approved lead in the latest run is new, and no clock is running');
@@ -289,6 +336,11 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
   out('');
   out('  Nothing was sent to a prospect. The draft went to the rep, who decides whether to send it.');
   out(`  Run again later to move the clock: node bin/signal-desk.mjs inbound${live ? ' --live' : ' --at <instant>'}`);
+  const attention = outcomes.filter((o) => NEEDS_A_PERSON.includes(o.status));
+  if (attention.length > 0) {
+    out(`  needs a person: ${attention.length} lead(s) (${[...new Set(attention.map((o) => o.status))].join(', ')}); exit 4, so a scheduled run can alarm.`);
+    return EXIT_NEEDS_A_PERSON;
+  }
   return 0;
 }
 
