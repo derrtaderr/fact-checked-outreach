@@ -170,10 +170,15 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     const known = state();
     const pick = pickRep({ rotation, pool: lead.pool, last: known.pointers[lead.pool], open: openCounts(known), exclude: tried });
     if (pick.rep === undefined) {
+      // The released rep was never told, so nobody is working this lead: it needs a person (REFUSED is
+      // exit 4), or, when every rep left in the pool has already had it, it parks as the clock parks it.
+      // Parked with the rep whose owner HubSpot holds: a claim released before its write set none.
+      const parked = exhaust(lead, [...lead.attempts].reverse().find((a) => a.crm !== null) ?? attempt, tried);
+      if (parked !== null) return parked;
       return {
-        status: 'REASSIGN_WAITING',
+        status: 'REFUSED',
         code: pick.code,
-        detail: `${why}. Nobody can take it yet: ${pick.detail}. The next run tries again`,
+        detail: `${why}. Nobody can take it: ${pick.detail}. No rep in the rotation is working this lead, whatever owner HubSpot shows; it is listed on every tick, and the tick exits 4, until a rep in "${lead.pool}" can take it`,
       };
     }
     claim(lead, pick, attempt.attempt + 1);
@@ -379,7 +384,8 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
   // or removed the contact. Until then it is listed again, with the way out.
   async function parked(key) {
     const lead = state().leads.get(key);
-    const attempt = latest(lead);
+    // The last attempt that wrote an owner: a claim released before its write never set one.
+    const attempt = [...lead.attempts].reverse().find((a) => a.crm !== null);
     const since = lead.stopped.at;
     const wayOut = 'To clear it, act on the contact in HubSpot: give it an owner, log activity on it, or delete it. The next tick sees that and stops listing it';
     let seen;
@@ -411,6 +417,16 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       rep: attempt.rep_id,
       detail: `parked since ${since}: every rep in "${lead.pool}" left it untouched, and it is still with ${attempt.rep_id}. ${wayOut}`,
     };
+  }
+
+  // Every rep in the pool has had the lead: journal `exhausted` and park it for a person. null when the
+  // pool still has a rep who has not had it, or is missing or empty, which is not "every rep had it".
+  function exhaust(lead, attempt, tried) {
+    const pool = rotation.pools[lead.pool] ?? [];
+    if (!(pool.length > 0 && pool.every((rep) => tried.includes(rep.id)))) return null;
+    const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide. It is listed on every tick until a person gives it an owner, logs activity on it, or deletes it in HubSpot`;
+    write({ type: 'exhausted', key: lead.key, attempt: attempt.attempt, detail });
+    return { status: 'NO_REP_RESPONDED', rep: attempt.rep_id, detail };
   }
 
   // The window has passed. Read HubSpot, and only an observed "untouched" moves the lead.
@@ -450,12 +466,8 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     if (pick.rep === undefined) {
       // A pool that is missing or empty is not "every rep had it" ([].every is true): it waits, under
       // its own code, journals nothing, and the lead resumes the moment the pool is back.
-      const pool = rotation.pools[lead.pool] ?? [];
-      if (pool.length > 0 && pool.every((rep) => tried.includes(rep.id))) {
-        const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide. It is listed on every tick until a person gives it an owner, logs activity on it, or deletes it in HubSpot`;
-        write({ type: 'exhausted', key, attempt: attempt.attempt, detail });
-        return { status: 'NO_REP_RESPONDED', rep: attempt.rep_id, detail };
-      }
+      const parked = exhaust(lead, attempt, tried);
+      if (parked !== null) return parked;
       return {
         status: 'REASSIGN_WAITING',
         code: pick.code,

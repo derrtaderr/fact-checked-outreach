@@ -450,7 +450,7 @@ Each line of a tick's output is one lead in one of these states.
 | `SLACK_UNCONFIRMED` | a post may have landed (`SLACK_UNREACHABLE`) | the next tick looks for it by marker; if Slack cannot be searched (`SLACK_UNSEARCHABLE`) it is never posted again |
 | `ALREADY_OWNED` | the contact already had a HubSpot owner this tool did not write | nothing was written, nobody was told, the rep keeps their turn; the lead is parked. Set `"overwrite_owner": true` in the rotation file to let the tool replace such owners |
 | `LEAD_ALREADY_ASSIGNED` | the same person under a new signal id | skipped; takes no turn |
-| `REFUSED` | assigned nobody, with a code below | the rotation did not move |
+| `REFUSED` | assigned nobody, with a code below; or a claim released because its rep left the pool, with nobody eligible to take it | the rotation did not move; exit 4, and a released lead is listed on every tick until a rep in the pool can take it |
 
 Refusal codes: `NO_ROTATION_FOR_POOL`, `ROTATION_EMPTY`, `NO_ELIGIBLE_REP` (names each rep and
 why), `LEAD_HAS_NO_EMAIL`, `HANDOFF_FORMAT_UNSUPPORTED` (an `eml` export), `SIGNAL_ID_UNKNOWN` (no
