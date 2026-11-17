@@ -471,8 +471,11 @@ wired, a missing ceiling, a ceiling that is not a whole number of 1 or more (`nu
 `Infinity`), or one counted at a stage after `enrich`, the first stage that bills, throws
 `LEAD_CEILING_MISSING` before anything is fetched. `liveConfig` refuses a bad value with
 `LEAD_CEILING_INVALID`. A ceiling that is present but unreadable is refused in every mode. What it
-does not cover: a caller that writes its own fetch or model function from scratch is not recognised
-as billing, so it is bounded only if it supplies `config.limits` itself. With nothing billing wired,
+does not cover: only the exact function `createLiveFetcher` or `createLiveModel` returned (and the
+capture wrapper this repo puts around it) is recognised as billing. Any other function is not,
+including a thin wrapper around one of those, such as an arrow function that calls it, a `.bind`
+copy, or an `Object.assign` copy, because the mark is on the function object and none of those
+carries it. Such a caller is bounded only if it supplies `config.limits` itself. With nothing billing wired,
 as in fixture mode and in `replay`, no ceiling is required, which is why a live capture made before
 the ceiling existed still replays. The ceiling is part of the run's config, so it is
 in the run id and the capture, and a replay reproduces it. The default lives in

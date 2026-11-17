@@ -69,3 +69,37 @@ test('M7: flow.md and metrics.md say which build they match, and it is not M4', 
     assert.match(front, /date: 2026-11-16/, path);
   }
 });
+
+// --- fix wave 2 ----------------------------------------------------------------------------------
+
+test('N-B: a thin wrapper around a billing transport loses the mark, and the README says exactly that', async () => {
+  const { createLiveFetcher } = await import('../src/live/http.mjs');
+  const { bills } = await import('../src/billing.mjs');
+  const fetch = createLiveFetcher({ transport: async () => ({ status: 404, headers: { get: () => null }, text: async () => '{}' }) });
+  assert.equal(bills(fetch), true, 'the function createLiveFetcher returned is marked');
+  assert.equal(bills((url) => fetch(url)), false, 'an arrow around it is not');
+  assert.equal(bills(fetch.bind(null)), false, 'a bound copy is not');
+  assert.equal(bills(Object.assign(async (url) => fetch(url), fetch)), false, 'an Object.assign copy is not');
+
+  const readme = read('README.md').replace(/\s+/g, ' ');
+  assert.doesNotMatch(readme, /writes its own fetch or model function from scratch is not recognised/);
+  assert.match(readme, /exact function `createLiveFetcher` or `createLiveModel` returned/);
+  assert.match(readme, /\.bind/);
+  assert.match(readme, /Object\.assign/);
+  assert.match(readme, /arrow function/);
+});
+
+test('N-C: the system map section 2 and 3 cli citations point at the lines they describe', () => {
+  const map = read('.vibecodepm/system.md');
+  const cli = read('src/cli.mjs').split('\n');
+
+  const writes = map.split('\n').find((line) => line.includes('written with writeFileSync, and also at src/cli.mjs'));
+  assert.ok(writes, 'section 2 carries the cli write bullet');
+  const cited = [...writes.matchAll(/src\/cli\.mjs:(\d+)/g)].map((match) => Number(match[1]));
+  const actual = cli.flatMap((line, index) => (/writeFileSync\(/.test(line) ? [index + 1] : []));
+  assert.deepEqual([...cited].sort((a, b) => a - b), actual, 'every cli write is cited, and nothing else');
+
+  const runsDir = map.match(/read via an injected env object \(src\/cli\.mjs:(\d+)\)/);
+  assert.ok(runsDir);
+  assert.match(cli[Number(runsDir[1]) - 1], /SIGNAL_DESK_RUNS_DIR/);
+});

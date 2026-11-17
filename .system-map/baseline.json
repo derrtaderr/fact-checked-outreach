@@ -52,7 +52,7 @@
     {
       "path": "src/billing.mjs",
       "language": "node",
-      "contentHash": "faf35b4f25e7",
+      "contentHash": "77efab14d0ce",
       "cite": "src/billing.mjs:1"
     },
     {
@@ -64,7 +64,7 @@
     {
       "path": "src/cli.mjs",
       "language": "node",
-      "contentHash": "d2900d03eeda",
+      "contentHash": "d2e61fe686fb",
       "cite": "src/cli.mjs:1"
     },
     {
@@ -148,7 +148,7 @@
     {
       "path": "src/live/cost.mjs",
       "language": "node",
-      "contentHash": "4ff9a4a96209",
+      "contentHash": "4af47321b4c8",
       "cite": "src/live/cost.mjs:1"
     },
     {
@@ -252,6 +252,12 @@
       "language": "node",
       "contentHash": "6cd566c06225",
       "cite": "src/stages/score.mjs:1"
+    },
+    {
+      "path": "src/terminal.mjs",
+      "language": "node",
+      "contentHash": "7a037fe2447b",
+      "cite": "src/terminal.mjs:1"
     }
   ],
   "edges": [
@@ -667,10 +673,20 @@
     },
     {
       "from": "src/cli.mjs",
-      "specifier": "./live/dlq.mjs",
+      "specifier": "./terminal.mjs",
       "kind": "import",
       "line": 41,
       "cite": "src/cli.mjs:41",
+      "to": "src/terminal.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/dlq.mjs",
+      "kind": "import",
+      "line": 49,
+      "cite": "src/cli.mjs:49",
       "to": "src/live/dlq.mjs",
       "external": false,
       "builtin": false
@@ -679,8 +695,8 @@
       "from": "src/cli.mjs",
       "specifier": "./decisions.mjs",
       "kind": "import",
-      "line": 48,
-      "cite": "src/cli.mjs:48",
+      "line": 56,
+      "cite": "src/cli.mjs:56",
       "to": "src/decisions.mjs",
       "external": false,
       "builtin": false
@@ -689,8 +705,8 @@
       "from": "src/cli.mjs",
       "specifier": "./kernel.mjs",
       "kind": "import",
-      "line": 49,
-      "cite": "src/cli.mjs:49",
+      "line": 57,
+      "cite": "src/cli.mjs:57",
       "to": "src/kernel.mjs",
       "external": false,
       "builtin": false
@@ -699,8 +715,8 @@
       "from": "src/cli.mjs",
       "specifier": "./ledger.mjs",
       "kind": "import",
-      "line": 50,
-      "cite": "src/cli.mjs:50",
+      "line": 58,
+      "cite": "src/cli.mjs:58",
       "to": "src/ledger.mjs",
       "external": false,
       "builtin": false
@@ -709,8 +725,8 @@
       "from": "src/cli.mjs",
       "specifier": "./adapters.mjs",
       "kind": "import",
-      "line": 51,
-      "cite": "src/cli.mjs:51",
+      "line": 59,
+      "cite": "src/cli.mjs:59",
       "to": "src/adapters.mjs",
       "external": false,
       "builtin": false
@@ -719,8 +735,8 @@
       "from": "src/cli.mjs",
       "specifier": "./dashboard.mjs",
       "kind": "import",
-      "line": 52,
-      "cite": "src/cli.mjs:52",
+      "line": 60,
+      "cite": "src/cli.mjs:60",
       "to": "src/dashboard.mjs",
       "external": false,
       "builtin": false
@@ -1494,10 +1510,10 @@
     {
       "name": "SIGNAL_DESK_RUNS_DIR",
       "how": "via an injected env object",
-      "line": 109,
+      "line": 117,
       "path": "src/cli.mjs",
       "secretish": false,
-      "cite": "src/cli.mjs:109",
+      "cite": "src/cli.mjs:117",
       "alsoAt": []
     }
   ],
@@ -1560,14 +1576,14 @@
       "call": "writeFileSync",
       "target": "path",
       "path": "src/cli.mjs",
-      "line": 162,
-      "cite": "src/cli.mjs:162",
+      "line": 170,
+      "cite": "src/cli.mjs:170",
       "alsoWrites": 4,
       "alsoAt": [
-        "src/cli.mjs:215",
-        "src/cli.mjs:220",
-        "src/cli.mjs:263",
-        "src/cli.mjs:1034"
+        "src/cli.mjs:223",
+        "src/cli.mjs:228",
+        "src/cli.mjs:271",
+        "src/cli.mjs:1053"
       ],
       "targets": [
         "path",
@@ -1643,12 +1659,13 @@
     "test/stage-ingest.test.mjs",
     "test/stage-queue.test.mjs",
     "test/stage-route.test.mjs",
-    "test/stage-score.test.mjs"
+    "test/stage-score.test.mjs",
+    "test/terminal-safety.test.mjs"
   ],
   "gaps": [],
   "counts": {
-    "modules": 42,
-    "edges": 122,
+    "modules": 43,
+    "edges": 123,
     "manifests": 1,
     "env": 1,
     "routes": 0,
@@ -1659,9 +1676,9 @@
     "authChecks": 0,
     "writes": 6,
     "shells": 0,
-    "testFiles": 53,
+    "testFiles": 54,
     "gaps": 0,
     "blockingGaps": 0
   },
-  "generated_at": "2026-11-17T02:16:50.019Z"
+  "generated_at": "2026-11-17T02:28:09.836Z"
 }

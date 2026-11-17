@@ -6,9 +6,11 @@
 // that can reach a metered service, createLiveFetcher and createLiveModel, mark what they return, the
 // capture wrappers carry the mark through, and the kernel asks the seams it was handed.
 //
-// What this does NOT cover, and the README says so: a caller that writes its own fetch or model
-// function from scratch is not marked, because this repo cannot know that a function it did not build
-// spends money. Such a caller is bounded only if it supplies config.limits itself.
+// What this does NOT cover, and the README says so: only the exact function createLiveFetcher or
+// createLiveModel returned, or the capture wrapper around it, carries the mark. Any other function
+// does not, including a thin wrapper around a marked one (an arrow that calls it, a .bind copy, an
+// Object.assign copy, since the mark is non-enumerable). Such a caller is bounded only if it supplies
+// config.limits itself.
 
 export const BILLS = Symbol.for('signal-desk.bills');
 
