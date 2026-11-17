@@ -300,6 +300,10 @@ dlq          lists what is retained, with the reason and the source file
 dlq --replay re-feeds the same message and the run proceeds
 ```
 
+`dlq --replay` prints "replaying N dead letter(s)" only after both credentials resolve and the
+ceiling check passes. A replay refused at either never says it was replaying
+(`docs/CEILING-FINDINGS-SPEC.md`, minor 2).
+
 The recovery is proven against the SAME BYTES rather than a reconstruction of them, which is the
 only version of this loop that demonstrates the fix worked. A walker should check that the queue
 does NOT fill with downstream refusals: a gate refusal is a decision the ledger holds, and offering

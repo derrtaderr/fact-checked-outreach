@@ -362,7 +362,7 @@ function maxLeadsFrom(args, err) {
   }
 }
 
-async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS, fromFlag = false }) {
+async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS, fromFlag = false, announce = () => {} }) {
   // Credentials first, before anything is read or written. See the note above.
   let key;
   let secret;
@@ -375,6 +375,10 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
   }
 
   if (ceilingRefusal({ signals, maxLeads, fromFlag, err })) return 2;
+
+  // Only now has the run started. A caller's announcement printed before these checks would say a
+  // replay began when it was about to be refused (CEILING-FINDINGS-SPEC minor 2).
+  announce();
 
   const transport = httpTransport ?? nodeTransport();
   const clock = recordingClock();
@@ -570,18 +574,22 @@ async function verbDlq(context) {
       if (signal !== undefined) signals.push(signal);
       else dead.push(stillDead);
     }
-    out(`replaying ${letters.length} dead letter(s)`);
-    out('');
     // WHY THIS NEEDS BOTH CREDENTIALS, recorded because it looks like over-strictness and is not.
     // A re-fed payload that clears ingest runs the whole pipeline, which drafts with the model. Asking
     // for the key only once a signal reached the draft stage would mean starting a run that dies
     // halfway, after fetching strangers' URLs, with some leads processed and some not. The signing
     // secret is needed even for a payload that will be refused again, because refusing it for an
     // invalid signature IS the verification. Both up front, or a partial run nobody asked for.
-    out('  Both credentials are required: a re-fed payload that clears ingest drafts with the model,');
-    out('  and verifying a signature is what deciding to refuse one again consists of.');
-    out('');
+    // Printed by executeLive once the credential and ceiling checks pass, never before them.
+    const announce = () => {
+      out(`replaying ${letters.length} dead letter(s)`);
+      out('');
+      out('  Both credentials are required: a re-fed payload that clears ingest drafts with the model,');
+      out('  and verifying a signature is what deciding to refuse one again consists of.');
+      out('');
+    };
     return executeLive({
+      announce,
       signals,
       dead,
       base,
