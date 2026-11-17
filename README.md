@@ -429,7 +429,10 @@ $ node bin/signal-desk.mjs run --live --signals ./signals --max-leads 25
 
 A signals folder holding more payloads than the ceiling refuses to start with
 `LEAD_CEILING_EXCEEDED`, naming the count and the ceiling, before a single URL is fetched or a
-model is called, and writes nothing. That refusal is free only because it refuses. **Under the
+model is called, and writes nothing. It counts parsed payloads, so a badly signed one counts against
+the ceiling even though ingest will refuse it and it never bills past ingest. When the ceiling was
+yours (`--max-leads`), the refusal says so and offers splitting the run before raising it. That
+refusal is free only because it refuses. **Under the
 ceiling, the same command is the real, billed run**, so do not use it as a preview. The preview is
 `--plan`:
 
@@ -441,8 +444,9 @@ It reads the folder the run would read and prints whether the run would start or
 evidence URLs per lead, and the expected and worst-case request counts from the table above. It
 needs no key and no secret, fetches nothing, calls no model and writes nothing. It does not verify
 signatures, so its counts are upper bounds. `dlq --replay` is held to the same ceiling and takes the same flag, because a
-re-fed lead bills like a fresh one. A ceiling of zero, a negative one, or anything that is not a
-whole number refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
+re-fed lead bills like a fresh one. The ceiling is written as plain digits, 1 or more, like `10` or
+`25`. Zero, a negative, a fraction, or a spelling with a sign, leading zero, exponent or spaces
+(`+5`, `007`, `1e3`) refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
 rather than being ignored, since a fixture run bills nothing. `--max-leads` given twice refuses with
 `FLAG_REPEATED` rather than quietly running under the first value, and so does any other value flag.
 

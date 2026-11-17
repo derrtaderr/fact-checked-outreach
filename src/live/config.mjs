@@ -59,9 +59,11 @@ export const CEILING_COUNTED_FROM = 'enrich';
 export class LeadCeilingInvalidError extends Error {
   constructor(raw) {
     super(
-      `--max-leads needs a whole number of leads of 1 or more, and got ${raw === undefined ? 'nothing' : typeof raw === 'string' ? JSON.stringify(raw) : String(raw)}. ` +
+      `--max-leads takes a count of 1 or more written as plain digits, like 10 or 25, with no sign, ` +
+        `leading zero, decimal point, exponent or spaces, and got ${raw === undefined ? 'nothing' : typeof raw === 'string' ? JSON.stringify(raw) : String(raw)}. ` +
         'A ceiling of zero, a negative ceiling or one that is not a number would either refuse every ' +
-        'lead or bound nothing, so it is refused rather than guessed at. Nothing was read or fetched.',
+        'lead or bound nothing, and a spelling like 007 or 1e3 is refused rather than guessed at. ' +
+        'Nothing was read or fetched.',
     );
     this.name = 'LeadCeilingInvalidError';
     this.code = 'LEAD_CEILING_INVALID';
