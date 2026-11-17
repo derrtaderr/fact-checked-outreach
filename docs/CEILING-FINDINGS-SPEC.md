@@ -324,3 +324,27 @@ bill. The README's formula says "https" now. A value longer than 200 characters 
 on the source, and a URL the operator cannot read in full is one they cannot check before paying to
 fetch it. The ledger and the capture still hold the URL as the payload gave it; masking is for the
 terminal only.
+
+## N-B. Which functions carry the billing mark, exactly
+
+The README said a function written "from scratch" is not recognised. That was too narrow: a thin
+wrapper around this repo's own transport, such as an arrow that calls it, a `.bind` copy or an
+`Object.assign` copy, also loses the mark, because the mark is a non-enumerable symbol on the
+function object. The README and `src/billing.mjs` now say that only the exact function
+`createLiveFetcher` or `createLiveModel` returned, and the capture wrapper around it, is recognised.
+A test pins each case. Making wrappers inherit the mark is not attempted: a wrapper can do anything,
+including not calling the transport, so the honest rule is to state the boundary.
+
+## N-C. The remaining stale citations in the system map
+
+Sections 2 and 3 cited `src/cli.mjs` lines that this PR moved. They are corrected at the final head,
+and the docs test now checks them the way it checks section 4: every `writeFileSync(` in the CLI is
+cited and nothing else is, and the runs-directory cite lands on the line that reads
+`SIGNAL_DESK_RUNS_DIR`.
+
+## Split before raise
+
+The ship-check noted that after the `ceiling-messages.test.mjs` revision nothing asserted that the
+`run --live` refusal offers splitting before raising. It is asserted in
+`test/plan-urls-dlq-advice.test.mjs`, in the test "run --live keeps the split advice, because a folder
+can be split", which checks the split sentence comes before `--max-leads 3`. No change was needed.
