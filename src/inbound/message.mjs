@@ -15,8 +15,14 @@
 const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/gu;
 const NAMED = { '\r': '\\r', '\t': '\\t' };
 
-// Slack caps a plain_text section at 3000 characters. Leave room for the cut notice.
+import { createHash } from 'node:crypto';
+
+// Slack's documented limits, read 2026-11-16. A section block's text: "maximum length is 3000
+// characters" (https://docs.slack.dev/reference/block-kit/blocks/section-block). chat.postMessage's
+// `text`: "limit the `text` field to 4,000 characters" (https://docs.slack.dev/reference/methods/chat.postMessage).
+// Every block field is capped at the first and the fallback below the second, with room to spare.
 export const SLACK_PLAIN_MAX = 3000;
+export const SLACK_TEXT_MAX = 3900;
 
 function visible(value, { keepNewlines = true } = {}) {
   const text = typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value);
@@ -32,16 +38,20 @@ function slackEscape(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function capped(text) {
-  const limit = SLACK_PLAIN_MAX - 60;
-  if (text.length <= SLACK_PLAIN_MAX) return text;
+function capped(text, max = SLACK_PLAIN_MAX) {
+  const limit = max - 60;
+  if (text.length <= max) return text;
   return `${text.slice(0, limit)}… (${text.length} characters, first ${limit} shown)`;
 }
 
 const plain = (text) => ({ type: 'plain_text', text: capped(text), emoji: false });
 
+// A digest of the idempotency key and the attempt, in [a-z0-9-] only. It is sent, escaped, stored and
+// searched as the same bytes whatever the signal id holds: Slack's escaping of &, < and > cannot touch
+// it, so a post that may have landed is always findable.
 export function markerFor(key, attempt) {
-  return `signal-desk:${key}:${attempt}`;
+  const digest = createHash('sha256').update(`${key}\u0000${attempt}`).digest('hex').slice(0, 24);
+  return `signal-desk-${digest}`;
 }
 
 /**
@@ -77,7 +87,7 @@ export function buildSlackMessage({ lead, rep, key, attempt, reassigned, contact
     : `Evidence:\n${citations.map((url) => `- ${visible(url, { keepNewlines: false })}`).join('\n')}`;
 
   const blocks = [
-    { type: 'section', text: { type: 'mrkdwn', text: `*${slackEscape(headline)}* for ${mention}` } },
+    { type: 'section', text: { type: 'mrkdwn', text: capped(`*${slackEscape(headline)}* for ${mention}`) } },
     { type: 'section', text: plain(brief) },
     { type: 'section', text: plain(draft) },
     { type: 'section', text: plain(evidence) },
@@ -90,8 +100,9 @@ export function buildSlackMessage({ lead, rep, key, attempt, reassigned, contact
     },
   ];
 
-  // The fallback is what a notification shows. One line, escaped for mrkdwn.
-  const text = slackEscape(`${headline}: ${company}. ${marker}`);
+  // The fallback is what a notification shows, and what `find` searches. One line, escaped for mrkdwn,
+  // with the marker FIRST, so cutting it to Slack's limit can never drop the marker.
+  const text = capped(`${marker} ${slackEscape(`${headline}: ${company}.`)}`, SLACK_TEXT_MAX);
 
   return { channel: rep.slack_user_id, text, blocks, marker };
 }

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import { fakeHubSpot, fakeSlack } from '../src/inbound/fakes.mjs';
 import { InboundAdapterError } from '../src/inbound/errors.mjs';
+import { markerFor } from '../src/inbound/message.mjs';
 
 test('assign creates a contact once per email and updates its owner after that', async () => {
   const hubspot = fakeHubSpot({ owners: ['1001', '1002'] });
@@ -60,10 +61,10 @@ test('the fake HubSpot state round-trips through a snapshot, so fixture mode can
 
 test('slack post records the message and find locates it by marker', async () => {
   const slack = fakeSlack();
-  const { ts } = await slack.post({ channel: 'U1', text: 't', blocks: [], marker: 'signal-desk:k:0' });
+  const { ts } = await slack.post({ channel: 'U1', text: 't', blocks: [], marker: markerFor('k', 0) });
   assert.equal(slack.posts().length, 1);
-  assert.deepEqual(await slack.find({ channel: 'U1', marker: 'signal-desk:k:0' }), { ts });
-  assert.equal(await slack.find({ channel: 'U1', marker: 'signal-desk:k:1' }), null);
+  assert.deepEqual(await slack.find({ channel: 'U1', marker: markerFor('k', 0) }), { ts });
+  assert.equal(await slack.find({ channel: 'U1', marker: markerFor('k', 1) }), null);
 });
 
 test('an ambiguous post lands the message and still throws, which is what a timeout after send looks like', async () => {
