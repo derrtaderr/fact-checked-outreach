@@ -181,7 +181,10 @@ Interfaces, each with a fake. Tests never touch the network.
 The live adapters take a transport as a required argument with no default, like the live fetcher.
 `src/cli.mjs` stays the only module that imports `node-transport.mjs`. Each call has a timeout and
 is not retried inside the adapter: the next tick is the retry, and the journal says exactly where it
-resumes. Errors carry a named code: `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING`,
+resumes. Any failure after the request may have left (a dropped connection, a timeout, a 5xx, or a
+200 whose body cannot be read) is `ambiguous`: for Slack it goes through find-before-repost, never
+straight to a second post. The engine treats any error from `slack.post` that is not a named,
+unambiguous refusal (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) the same way. Errors carry a named code: `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING`,
 `HUBSPOT_INVALID_OWNER`, `HUBSPOT_RATE_LIMITED`, `HUBSPOT_UNAVAILABLE`, `SLACK_REJECTED`,
 `SLACK_UNREACHABLE`.
 

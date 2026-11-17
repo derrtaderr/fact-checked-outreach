@@ -33,8 +33,11 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
     throw new TypeError('createSlackAdapter requires a token');
   }
 
+  // Every await after the request left sits inside the try: a body that cannot be read after a 200
+  // says nothing about whether the post landed, so it is ambiguous exactly like a dropped connection.
   async function call(method, url, body) {
     let response;
+    let text;
     try {
       response = await transport(url, {
         method,
@@ -43,10 +46,11 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
+      text = await response.text();
     } catch (error) {
-      throw new InboundAdapterError('SLACK_UNREACHABLE', `Slack could not be reached: ${short(scrub(String(error?.message ?? error)))}`, { ambiguous: true });
+      const stage = response === undefined ? 'could not be reached' : `answered ${response.status} but the answer could not be read`;
+      throw new InboundAdapterError('SLACK_UNREACHABLE', `Slack ${stage}: ${short(scrub(String(error?.message ?? error)))}`, { ambiguous: true });
     }
-    const text = await response.text();
     let json = null;
     try {
       json = JSON.parse(text);
@@ -75,12 +79,21 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
       const unsearchable = (detail) =>
         new InboundAdapterError('SLACK_UNSEARCHABLE', `Slack would not show the message history (${short(scrub(detail))}), so whether the post landed is unknown`);
 
-      const opened = await call('POST', `${SLACK_BASE}/conversations.open`, { users: channel });
+      // A lookup that fails in any way, including a body that cannot be read, is "cannot tell", never
+      // "not found": only a history Slack actually showed may say the post is absent.
+      const ask = async (...args) => {
+        try {
+          return await call(...args);
+        } catch (error) {
+          throw unsearchable(String(error?.message ?? error));
+        }
+      };
+      const opened = await ask('POST', `${SLACK_BASE}/conversations.open`, { users: channel });
       if (opened.json?.ok !== true) throw unsearchable(String(opened.json?.error ?? opened.status));
 
       const from = Math.floor(Date.parse(oldest) / 1000) - SKEW_SECONDS;
       const query = new URLSearchParams({ channel: opened.json.channel.id, oldest: String(from), limit: '200' });
-      const history = await call('GET', `${SLACK_BASE}/conversations.history?${query}`);
+      const history = await ask('GET', `${SLACK_BASE}/conversations.history?${query}`);
       if (history.json?.ok !== true) throw unsearchable(String(history.json?.error ?? history.status));
 
       const hit = (history.json.messages ?? []).find((m) => typeof m?.text === 'string' && m.text.includes(marker));
