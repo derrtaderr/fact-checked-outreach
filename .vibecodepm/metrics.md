@@ -2,7 +2,7 @@
 name: signal-desk metrics
 read_by: vibecodepm:ship-check before any signal-desk release, and any session changing the CLI's first-run output
 milestone: M4
-status: current — matches the build at lane/row80-ceiling-findings (M4, the lead ceiling, and row 80's fixes)
+status: current, matches the build at lane/row157-inbound-last-mile (M4, the lead ceiling, row 80's fixes, and row 157's inbound last mile)
 date: 2026-11-16
 supersedes: the M3 metrics, whose instrumentation table this extends rather than replaces
 ---
@@ -146,6 +146,28 @@ And the fixture-domain row caught this: `liveConfig` inherited the fixture ident
 source and would have tried to resolve a reserved test domain on every live lead, then reported
 IDENTITY_UNVERIFIED as though a real source had declined to answer. A composition-level assertion
 found it; no unit test would have.
+
+### New in row 157: inbound is measured by the journal
+
+**The stranger's activation event does not move.** `inbound` comes after `run`, and a verb reached
+second is never the first two minutes.
+
+**The inbound activation event is the first `slack_posted` line in `runs/inbound/journal.jsonl`**:
+an approved lead whose owner is written in HubSpot and whose rep was told. Before that line the path
+has proven nothing an operator cares about; after it, a real rep holds a real lead. Measured by
+reading the journal, which is the only record and needs no instrumentation of its own.
+
+| Number | How it is read from the journal |
+|---|---|
+| leads owned | distinct `key` with a `crm_written` line |
+| time to touch | `touched.activity_at` minus the attempt's `slack_posted.at`, per lead |
+| reassignment rate | leads with a `claim` at `attempt` 1 or more, over leads claimed |
+| unanswered | leads with an `exhausted` line (`NO_REP_RESPONDED`) |
+| unsettled | leads whose latest attempt has a `slack_attempt` and no `slack_posted` (`SLACK_UNCONFIRMED`) |
+
+Fixture mode writes the same lines to `runs/inbound-fixture/journal.jsonl`, which is what the tests
+read. Nothing reads the live journal on a schedule yet; when a live motion exists, a non-zero
+"unanswered" or "unsettled" count is paged the same way the DLQ count is (system map section 5).
 
 ## The number that matters after activation
 

@@ -1,0 +1,14 @@
+{
+  "response_minutes": 30,
+  "pools": {
+    "ae-round-robin": [
+      { "id": "ana", "hubspot_owner_id": "fixture-owner-ana", "slack_user_id": "UFIXTUREANA" },
+      { "id": "ben", "hubspot_owner_id": "fixture-owner-ben", "slack_user_id": "UFIXTUREBEN" },
+      { "id": "cy", "hubspot_owner_id": "fixture-owner-cy", "slack_user_id": "UFIXTURECY", "capacity": 3 }
+    ],
+    "sdr-queue": [
+      { "id": "dee", "hubspot_owner_id": "fixture-owner-dee", "slack_user_id": "UFIXTUREDEE" },
+      { "id": "eli", "hubspot_owner_id": "fixture-owner-eli", "slack_user_id": "UFIXTUREELI", "away": true }
+    ]
+  }
+}

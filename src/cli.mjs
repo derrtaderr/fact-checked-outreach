@@ -1,4 +1,4 @@
-// The CLI. Eight verbs: run, run --live, queue, approve, reject, explain, replay, dashboard, dlq.
+// The CLI. Ten verbs: run, run --live, queue, approve, reject, explain, replay, dashboard, dlq, inbound.
 //
 // This is where bytes reach disk. Stages do no I/O and the kernel writes only to an
 // in-memory ledger, so putting every write in one place keeps the rest of the system
@@ -58,6 +58,7 @@ import { runPipeline } from './kernel.mjs';
 import { parseLedger, verifyChain, isSealed, sealOf } from './ledger.mjs';
 import { adapters } from './adapters.mjs';
 import { buildDashboardView, renderDashboard } from './dashboard.mjs';
+import { verbInbound } from './inbound/verb.mjs';
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -74,6 +75,7 @@ Usage:
   node bin/signal-desk.mjs replay <run>   Re-execute a run and verify its ledger still matches
   node bin/signal-desk.mjs dashboard      Render a run's ledger as one self-contained HTML file
   node bin/signal-desk.mjs dlq            List payloads live ingest could not accept, and replay them
+  node bin/signal-desk.mjs inbound        Give approved leads an owner, tell the rep, run the response clock
 
 Flags, per verb. Anything else is refused rather than ignored, so no invocation can quietly
 become a different one than you typed. Write them as "--flag value", never "--flag=value",
@@ -84,6 +86,7 @@ one dash or a typographic dash (-plan, —plan) is refused, and so is any word a
   approve   --by <name>, --note <text>
   reject    --by <name>, --note <text>
   dlq       --replay, --max-leads <n>
+  inbound   --live, --plan, --rotation <file>, --at <instant>
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -1099,10 +1102,11 @@ const ACCEPTED_FLAGS = Object.freeze({
   replay: [],
   dashboard: [],
   dlq: ['--replay', '--max-leads'],
+  inbound: ['--live', '--plan', '--rotation', '--at'],
 });
 
 // Flags that take a value, so the value is not mistaken for a flag or for a positional argument.
-const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note', '--max-leads']);
+const FLAGS_WITH_VALUES = Object.freeze(['--signals', '--by', '--note', '--max-leads', '--rotation', '--at']);
 
 // EVERY TOKEN IS ACCOUNTED FOR. docs/CEILING-FINDINGS-SPEC.md, fix wave 1, B1.
 //
@@ -1115,6 +1119,7 @@ const POSITIONAL = Object.freeze({
   run: null,
   queue: null,
   dlq: null,
+  inbound: null,
   approve: 'the draft hash or lead id',
   reject: 'the draft hash or lead id',
   explain: 'the lead id',
@@ -1247,6 +1252,10 @@ export async function main({
       return args.includes('--live') ? verbRunLive(context) : verbRun(context);
     case 'dlq':
       return verbDlq(context);
+    case 'inbound':
+      // The transport is built here, on demand, because this module is the only one allowed to import
+      // node-transport.mjs (test/no-network.test.mjs). A fixture tick and --plan never call it.
+      return verbInbound({ ...context, makeTransport: () => httpTransport ?? nodeTransport() });
     case 'queue':
       return verbQueue(context);
     case 'approve':
