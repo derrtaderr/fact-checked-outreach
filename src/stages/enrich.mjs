@@ -12,10 +12,26 @@
 import { pass, refuse } from '../contract.mjs';
 import { detectInjection, describeInjection } from '../injection.mjs';
 
-function expand(template, lead) {
+// Exported, with fetchTemplates below, so `run --live --plan` derives the URLs it counts and prints
+// from the same code this stage fetches with. A plan that read the raw template counted 0 fetches
+// for a payload whose sources begin with {domain}, while the run made every one of them (review
+// pass 3, X1).
+export function expand(template, lead) {
   return template
     .replaceAll('{domain}', lead.company.domain)
     .replaceAll('{email}', lead.contact.email);
+}
+
+// Which templates this stage will expand and hand to ctx.fetch for a lead: the identity source, or
+// null when there is none, and the claim sources in order. In signal mode the payload names them;
+// otherwise the config does. The fetcher then decides whether each expanded URL is sent.
+export function fetchTemplates(lead, config) {
+  const fromSignal = (config.enrich?.sourcesFrom ?? 'config') === 'signal';
+  const identity = fromSignal ? lead.identity_source : config.enrich?.identitySource;
+  return {
+    identity: typeof identity === 'string' && identity !== '' ? identity : null,
+    sources: fromSignal ? lead.sources ?? [] : config.enrich?.sources ?? [],
+  };
 }
 
 // --- evidence freshness ------------------------------------------------------------------
@@ -161,11 +177,8 @@ async function verifyIdentity(lead, ctx) {
   // are, and for the same reasons: no vendor in the repo, no provider account needed, and the
   // evidence a run stands on is the evidence the payload pointed at. A signal that names none gets
   // no identity check, which is the state every lead was in before M3 and is reported as such.
-  const template =
-    (ctx.config.enrich?.sourcesFrom ?? 'config') === 'signal'
-      ? lead.identity_source
-      : ctx.config.enrich?.identitySource;
-  if (typeof template !== 'string' || template === '') return { entries: [] };
+  const template = fetchTemplates(lead, ctx.config).identity;
+  if (template === null) return { entries: [] };
 
   const url = expand(template, lead);
   const unverified = (why) => ({
@@ -267,10 +280,7 @@ export const enrich = {
     // requires; and it makes "every claim binds to a citation fetched in this run" LITERAL. The
     // payload asserts where the evidence is and the pipeline fetches exactly that, so a claim with
     // no fetched citation behind it is structurally impossible rather than merely checked for.
-    const sources =
-      (ctx.config.enrich?.sourcesFrom ?? 'config') === 'signal'
-        ? lead.sources ?? []
-        : ctx.config.enrich?.sources ?? [];
+    const { sources } = fetchTemplates(lead, ctx.config);
     const claims = [];
     const citations = [];
     const entries = [];

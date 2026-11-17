@@ -14,7 +14,12 @@
 // numbers are upper bounds for that lead.
 
 import { DEFAULT_RETRIES as MODEL_RETRIES, DEFAULT_MAX_TOKENS } from './anthropic.mjs';
-import { DEFAULT_RETRIES as FETCH_RETRIES } from './http.mjs';
+import { DEFAULT_RETRIES as FETCH_RETRIES, isFetchableUrl } from './http.mjs';
+import { liveConfig } from './config.mjs';
+import { leadFromPayload } from '../stages/ingest.mjs';
+import { expand, fetchTemplates } from '../stages/enrich.mjs';
+
+export { isFetchableUrl };
 
 export const MODEL_CALLS_PER_LEAD = 2;
 
@@ -25,21 +30,43 @@ export const COST_FORMULA =
   `per lead, expected: U fetches + ${MODEL_CALLS_PER_LEAD} model calls; worst case, every retry: ` +
   `U × ${FETCH_ATTEMPTS} fetches + ${MODEL_CALLS_PER_LEAD} × ${MODEL_ATTEMPTS} = ` +
   `${MODEL_CALLS_PER_LEAD * MODEL_ATTEMPTS} model attempts, each asking for at most ` +
-  `${DEFAULT_MAX_TOKENS.toLocaleString('en-US')} output tokens. U is the https evidence URLs a payload cites, plus ` +
-  'one if it names an https identity source. The price per request is your provider\'s.';
+  `${DEFAULT_MAX_TOKENS.toLocaleString('en-US')} output tokens. U is the evidence URLs a payload cites that are https once {domain} and {email} ` +
+  'are expanded, plus one if it names an identity source that is. The price per request is your provider\'s.';
 
-// Only an https string can become a request: the live fetcher refuses anything else before it
-// sends (SOURCE_INSECURE), so a non-string or plaintext source bills nothing (fix wave 2, N-D).
-export function isFetchableUrl(value) {
-  return typeof value === 'string' && /^https:\/\//i.test(value);
+// The enrich config a live run uses. Only its enrich block is read, so the secret and start are inert.
+const LIVE = liveConfig({ secret: '', startedAt: '1970-01-01T00:00:00.000Z' });
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * Every request enrich will consider for one parsed payload, in the order it makes them: the
+ * identity source, then each claim source. Derived by the run's own code (review pass 3, X1): the
+ * lead ingest builds, the templates enrich picks, enrich's expand(), and the live fetcher's
+ * isFetchableUrl(). `url` is null for a source that is not a string, which enrich cannot expand.
+ *
+ * A payload with no usable domain or email is refused at ingest and fetches nothing. Its templates
+ * are left unexpanded and counted only if they are https as written, which is still an upper bound.
+ */
+export function plannedFetches(signal) {
+  const payload = signal?.payload !== null && typeof signal?.payload === 'object' ? signal.payload : {};
+  const expandable = isNonEmptyString(payload.company?.domain) && isNonEmptyString(payload.contact?.email);
+  const { lead } = leadFromPayload(
+    expandable ? payload : { ...payload, company: { domain: '{domain}' }, contact: { email: '{email}' } },
+  );
+  const { identity, sources } = fetchTemplates(lead, LIVE);
+  const one = (kind, template) => {
+    if (typeof template !== 'string') return { kind, template, url: null, fetchable: false };
+    const url = expand(template, lead);
+    return { kind, template, url, fetchable: isFetchableUrl(url) };
+  };
+  return [...(identity === null ? [] : [one('identity', identity)]), ...sources.map((s) => one('source', s))];
 }
 
 /** The evidence URLs one parsed payload will make a live run fetch. */
 export function evidenceUrls(signal) {
-  const payload = signal?.payload ?? {};
-  const sources = Array.isArray(payload.sources) ? payload.sources.filter(isFetchableUrl).length : 0;
-  const identity = isFetchableUrl(payload.identity_source) ? 1 : 0;
-  return sources + identity;
+  return plannedFetches(signal).filter((planned) => planned.fetchable).length;
 }
 
 export function leadRequests(signal) {

@@ -115,6 +115,31 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+// The lead fields a payload becomes, with the domain and email normalised. Exported so
+// `run --live --plan` expands templates against the same values enrich will (review pass 3, X1).
+// Requires company.domain and contact.email to be strings, which shapeProblem checks first.
+export function leadFromPayload(payload) {
+  const domain = payload.company.domain.trim().toLowerCase();
+  const email = payload.contact.email.trim().toLowerCase();
+  return {
+    domain,
+    email,
+    lead: {
+      company: { ...payload.company, domain },
+      contact: { ...payload.contact, email },
+      intent: payload.intent ?? {},
+      // Where the SIGNAL says the evidence is, kept deliberately distinct from `citations`,
+      // which is what enrich actually fetched. Collapsing the two names would let a URL nobody
+      // fetched read as a citation, which is the one thing the enrichment discipline forbids.
+      // Live mode reads these; fixture mode's configured templates ignore them. See M4 spec §6.
+      sources: Array.isArray(payload.sources) ? [...payload.sources] : [],
+      // The person-level source, also named by the signal in live mode, for the same reason the
+      // claim sources are. See M4 spec §6.
+      ...(isNonEmptyString(payload.identity_source) ? { identity_source: payload.identity_source } : {}),
+    },
+  };
+}
+
 // Returns the name of the first missing or malformed field, or null when the shape holds.
 function shapeProblem(signal) {
   if (signal === null || typeof signal !== 'object' || Array.isArray(signal)) {
@@ -230,8 +255,7 @@ export const ingest = {
     // pipeline again, consumed the same human approval a second time, and wrote its handoff
     // artifact over the first. One person, one motion: a second signal about someone already
     // accepted is corroborating evidence, never a second reason to write to them.
-    const domain = signal.payload.company.domain.trim().toLowerCase();
-    const email = signal.payload.contact.email.trim().toLowerCase();
+    const { domain, email, lead } = leadFromPayload(signal.payload);
     const leadId = leadIdFor(domain, email);
 
     const priorAcceptance = acceptedIngests.find((entry) => entry.lead_id === leadId);
@@ -251,19 +275,7 @@ export const ingest = {
         signal_id: signal.id,
         source: signal.source,
         received_at: signal.received_at,
-        company: { ...signal.payload.company, domain },
-        contact: { ...signal.payload.contact, email },
-        intent: signal.payload.intent ?? {},
-        // Where the SIGNAL says the evidence is, kept deliberately distinct from `citations`,
-        // which is what enrich actually fetched. Collapsing the two names would let a URL nobody
-        // fetched read as a citation, which is the one thing the enrichment discipline forbids.
-        // Live mode reads these; fixture mode's configured templates ignore them. See M4 spec §6.
-        sources: Array.isArray(signal.payload.sources) ? [...signal.payload.sources] : [],
-        // The person-level source, also named by the signal in live mode, for the same reason the
-        // claim sources are. See M4 spec §6.
-        ...(isNonEmptyString(signal.payload.identity_source)
-          ? { identity_source: signal.payload.identity_source }
-          : {}),
+        ...lead,
       },
       evidence_refs: [`signal:${signal.id}`],
     });

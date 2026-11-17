@@ -27,7 +27,7 @@ surface reconcile will look for in the code, so commands are written in plain wo
 - state lives in local files: `join(FIXTURES_DIR, 'approvals.json')`, written with writeFileSync (scripts/record-approvals.mjs:69)
 - state lives in local files: `path`, written with writeFileSync (scripts/record-rubric.mjs:99)
 - state lives in local files: `goldenPath`, written with writeFileSync (scripts/update-golden.mjs:20)
-- state lives in local files: `path`, written with writeFileSync, and also at src/cli.mjs:223, src/cli.mjs:228, src/cli.mjs:271, src/cli.mjs:1053 (src/cli.mjs:170)
+- state lives in local files: `path`, written with writeFileSync, and also at src/cli.mjs:223, src/cli.mjs:228, src/cli.mjs:271, src/cli.mjs:1055 (src/cli.mjs:170)
 - state lives in local files: `path`, written with writeFileSync (src/decisions.mjs:114)
 - Decision: the four scripts writes are development-time fixtures and goldens, committed to this repo, not runtime state. The runtime state is three things under the runs directory (`SIGNAL_DESK_RUNS_DIR`, default inside the checkout): per-run outputs and exports written by the cli, the sealed decisions ledger (JSONL, tamper-evident, src/decisions.mjs:114), and the dead-letter queue for leads that failed a stage (src/live/dlq.mjs:52).
 - Decision: fixtures and goldens are backed up by git. The runs directory, the ledger and the DLQ are not in git. Decision (Jason, 2026-09-27): no live motion points at signal-desk today, so the runs directory holds demo output only and needs no backup; the ledger and the DLQ move to a backed-up path the day a live run exists.
