@@ -133,6 +133,7 @@ they are refusals of the OPERATOR's configuration rather than of a lead.
 | **No fixture domain is contacted in live mode** | the fetched URL list is asserted against the payload's own citations | `test/live-cli.test.mjs` |
 | **A live run cannot bill past its lead ceiling** | over the ceiling, exit 2 `LEAD_CEILING_EXCEEDED` with zero transport calls and an empty runs directory; a bad ceiling exits 2 `LEAD_CEILING_INVALID` | `test/cli-ceiling.test.mjs` |
 | **The kernel stops AT the ceiling for any caller** | the billing stage runs exactly `maxLeads` times, every lead over it has its own `LEAD_CEILING_REACHED` line, the run still seals and replays byte for byte | `test/lead-ceiling.test.mjs`, `test/live-ceiling.test.mjs` |
+| **A ceiling the kernel cannot read fails closed** | a live config with no limits, a non-integer or sub-1 `maxLeads`, or an unknown `countedFrom` throws `LEAD_CEILING_MISSING` with zero stages run; `liveConfig` refuses the same values with `LEAD_CEILING_INVALID` | `test/ceiling-fail-closed.test.mjs` |
 
 **Two of those rows exist because they caught something.** The credential row caught a plaintext
 signing secret in the shareable capture, which had passed 830 tests because the hygiene test set a
