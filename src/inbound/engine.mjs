@@ -127,13 +127,15 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     const label = attempt.attempt === 0 ? 'ASSIGNED' : 'REASSIGNED';
 
     if (attempt.crm === null) {
+      // The journal write sits OUTSIDE the try. A crash while recording the result is a crash, not a
+      // HubSpot failure; caught here it would be journaled as crm_failed, which is a false record.
+      let written;
       try {
-        const written = await hubspot.assign({
+        written = await hubspot.assign({
           email: lead.brief.to,
           ownerId: attempt.owner_id,
           properties: { company: lead.brief.company },
         });
-        write({ type: 'crm_written', key, attempt: attempt.attempt, contact_id: written.contactId, owner_id: attempt.owner_id });
       } catch (error) {
         const code = error?.code ?? 'HUBSPOT_UNAVAILABLE';
         const detail = scrubbed(scrub, error);
@@ -145,6 +147,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
           detail: `HubSpot did not take the owner (${detail}). ${rep.id} keeps this turn; the next run writes the owner again and only then tells them`,
         };
       }
+      write({ type: 'crm_written', key, attempt: attempt.attempt, contact_id: written.contactId, owner_id: attempt.owner_id });
     }
 
     const current = latest(state().leads.get(key));
@@ -181,9 +184,11 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     }
 
     write({ type: 'slack_attempt', key, attempt: attempt.attempt, marker: message.marker });
+    // As above: a crash while recording a post that landed must stay a crash. Caught here, it would be
+    // journaled as slack_failed and the next run would post a second time.
+    let posted;
     try {
-      const posted = await slack.post(message);
-      write({ type: 'slack_posted', key, attempt: attempt.attempt, ts: posted.ts });
+      posted = await slack.post(message);
     } catch (error) {
       const code = error?.code ?? 'SLACK_UNREACHABLE';
       if (error?.ambiguous) {
@@ -202,6 +207,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
         detail: `the owner is written; Slack refused the post (${scrubbed(scrub, error)}). The next run posts it`,
       };
     }
+    write({ type: 'slack_posted', key, attempt: attempt.attempt, ts: posted.ts });
     return { status: label, rep: rep.id, detail: `owner written, ${rep.id} told` };
   }
 
