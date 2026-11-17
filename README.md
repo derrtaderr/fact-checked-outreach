@@ -748,6 +748,23 @@ rotation file it refuses `ROTATION_CONFIG_MISSING`; live never falls back to the
 `--at` is refused in live mode, which reads real time. Run `inbound --live` on a schedule (cron, a
 launchd job) to move the clock; each run is one tick.
 
+### One tick at a time
+
+A tick holds an exclusive lock on its state directory (`runs/inbound/lock`, or
+`runs/inbound-fixture/lock`) from before it reads the journal until after its last write. The file is
+created atomically and holds the pid, host and start instant of the tick that holds it. A second
+`inbound` started while one is running refuses `INBOUND_LOCKED`, names the holder, exits 3, and
+writes nothing, so two overlapping cron runs cannot both claim a lead. `--plan` writes nothing and
+takes no lock.
+
+**The stale-lock rule.** A lock is stale only if its host is this machine and its pid is no longer
+running. The next tick then removes it and says so (`lock  removed a stale lock left by pid ...`).
+Removing it takes a second exclusive file, `lock.break`, and re-reads the lock while holding it, so
+only the stale lock that was judged is ever removed and two live ticks can never both get in. A lock
+from another host, or a pid that is running (even if it is an unrelated process that reused the pid),
+is never removed automatically. If you are sure no tick is running, delete the `lock` file (and a
+`lock.break` left by a crash during a break) yourself.
+
 Tokens stay inside the adapters. They are never printed, logged or written to the run directory, and
 upstream error text is scrubbed before it is recorded. In Slack, payload text only appears in
 `plain_text` blocks, so a company named `<!channel>` pings nobody.

@@ -460,6 +460,11 @@ passing ingest entry for the lead). HubSpot failure codes carried by `CRM_PENDIN
 
 ### Recovery paths
 
+**`INBOUND_LOCKED`, exit 3.** Another tick holds the state directory's lock; the refusal names its
+pid, host and start. Nothing was read or written. Wait for it, or, if no tick is running and the
+holder is on another host, delete `runs/inbound/lock` (the README's stale-lock rule says when the
+tool removes it itself).
+
 **A crash anywhere in a tick.** Run it again. The journal says which rep each lead belongs to and
 how far the attempt got; the same rep is kept, HubSpot is rewritten idempotently, and a post that
 may exist is looked up before anything is posted. A torn final journal line is removed and the run

@@ -20,6 +20,7 @@ import { printable, maskUrl } from '../terminal.mjs';
 import { secretScrubber } from '../live/keys.mjs';
 import { parseRotationConfig, pickRep, RotationConfigError } from './rotation.mjs';
 import { Journal, JournalTamperedError } from './journal.mjs';
+import { acquireLock, InboundLockedError } from './lock.mjs';
 import { tick, fold, openCounts } from './engine.mjs';
 import { fakeHubSpot, fakeSlack } from './fakes.mjs';
 import { createHubSpotAdapter, hubspotPaths, HUBSPOT_BASE } from './hubspot.mjs';
@@ -196,16 +197,49 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
   const journalPath = join(stateDir, 'journal.jsonl');
   const show = (path) => relative(cwd, path) || path;
 
+  if (plan) {
+    // A plan reads and writes nothing, so it takes no lock.
+    let journal;
+    try {
+      journal = Journal.open(journalPath, { readOnly: true });
+    } catch (error) {
+      if (!(error instanceof JournalTamperedError)) throw error;
+      err(`${error.code}: ${error.message}`);
+      return 1;
+    }
+    return planTick({ out, rotation, journal, events, refused, at: now(), runId, journalPath: show(journalPath) });
+  }
+
+  // One tick at a time per state directory, held from before the journal is read until after the last
+  // write. A second process stops here, having written nothing.
+  let lock;
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    lock = acquireLock(stateDir);
+  } catch (error) {
+    if (!(error instanceof InboundLockedError)) throw error;
+    err(error.message);
+    return EXIT_LOCKED;
+  }
+  try {
+    return await lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock });
+  } finally {
+    lock.release();
+  }
+}
+
+/** Exit codes of `inbound`, documented in the README, "Inbound last mile". */
+export const EXIT_LOCKED = 3;
+
+async function lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock }) {
   let journal;
   try {
-    journal = Journal.open(journalPath, { readOnly: plan });
+    journal = Journal.open(journalPath);
   } catch (error) {
     if (!(error instanceof JournalTamperedError)) throw error;
     err(`${error.code}: ${error.message}`);
     return 1;
   }
-
-  if (plan) return planTick({ out, rotation, journal, events, refused, at: now(), runId, journalPath: show(journalPath) });
 
   let hubspot;
   let slack;
@@ -238,6 +272,7 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
 
   out(`inbound tick at ${report.at} (${live ? 'live mode: HubSpot and Slack' : 'fixture mode: fake HubSpot and fake Slack'}), run ${runId}`);
   out(`  rotation  ${located.synthetic ? 'the committed synthetic reps' : show(located.path)}, ${rotation.response_minutes} minute response window`);
+  if (lock.broke) out(`  lock      ${lock.broke}`);
   if (report.repaired) out(`  journal   ${report.repaired}`);
   out('');
   const outcomes = [...refused, ...report.outcomes];

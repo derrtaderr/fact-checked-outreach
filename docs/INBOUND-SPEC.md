@@ -163,6 +163,23 @@ Opt in to replacing such owners with `"overwrite_owner": true` at the top of the
 HubSpot has no conditional update, so a person who sets an owner between the read and the write can
 still be overwritten; the window is one round trip.
 
+## One tick at a time
+
+The journal survives a crash, not a second writer. Two processes that both read it before either
+appends both claim, both post, and leave two lines chained to one head. So a tick takes an exclusive
+lock on its state directory (`<state>/lock`, created with `O_CREAT|O_EXCL`, holding pid, host and
+start instant) before it opens the journal, and releases it after its last write, the fixture fakes'
+files included. A second process refuses `INBOUND_LOCKED`, exit 3, before reading or writing anything.
+`--plan` takes no lock because it writes nothing.
+
+Stale rule: a lock is stale only when its host is this host and its pid is not running. The breaker
+takes a second exclusive file, `<state>/lock.break`, re-reads the lock while holding it, and removes
+it only if it is still the same stale holder; then it creates its own lock with `O_EXCL` like any
+other process. Only a breaker can remove a lock whose holder is dead, so the lock removed is always
+the stale one judged, and a process that starts in between wins the create while the breaker
+refuses. A reused pid reads as live (the safe direction). Another host's lock, and a `lock.break`
+left by a crash mid-break, are never broken automatically; the refusal names the file for a person.
+
 ## The clock
 
 The engine takes an injected clock, the same shape as the run clock (`now()`). Each `inbound`
