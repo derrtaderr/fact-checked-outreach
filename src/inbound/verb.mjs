@@ -260,8 +260,10 @@ function planTick({ out, rotation, journal, events, refused, at, runId, journalP
   const open = openCounts(state);
   const url = (path) => printable(maskUrl(`${HUBSPOT_BASE}${path}`), { max: Infinity });
   const assignCalls = (email, rep, indent) => {
-    out(`${indent}PATCH ${url(hubspotPaths.update(email))}  (owner ${shown(rep.hubspot_owner_id)})`);
-    out(`${indent}  on 404, POST ${url(hubspotPaths.create())}; on 409, PATCH again`);
+    out(`${indent}GET ${url(hubspotPaths.read(email))}  (read the owner first)`);
+    out(`${indent}  on 404, POST ${url(hubspotPaths.create())}; on 409, GET again`);
+    out(`${indent}  if it has an owner this tool did not write: no write, ALREADY_OWNED, nobody told (unless "overwrite_owner": true)`);
+    out(`${indent}  otherwise PATCH ${url(hubspotPaths.update(email))}  (owner ${shown(rep.hubspot_owner_id)})`);
     out(`${indent}POST ${SLACK_BASE}/chat.postMessage to ${shown(rep.slack_user_id)}`);
   };
 

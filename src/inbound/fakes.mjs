@@ -24,12 +24,16 @@ export function fakeHubSpot({ owners = [], snapshot } = {}) {
   };
 
   return {
-    async assign({ email, ownerId, properties = {} }) {
+    async assign({ email, ownerId, properties = {}, mayReplace = [], overwrite = false }) {
       failIfScripted();
+      const existing = contacts.get(keyOf(email));
+      // As the live adapter: an owner a person set is left alone unless overwriting was opted into.
+      if (existing !== undefined && existing.ownerId && existing.ownerId !== ownerId && !mayReplace.includes(existing.ownerId) && !overwrite) {
+        return { contactId: existing.contactId, created: false, refused: 'ALREADY_OWNED', ownerId: existing.ownerId };
+      }
       if (!owners.includes(ownerId)) {
         throw new InboundAdapterError('HUBSPOT_INVALID_OWNER', `${ownerId} was not a valid owner ID`);
       }
-      const existing = contacts.get(keyOf(email));
       if (existing !== undefined) {
         existing.ownerId = ownerId;
         return { contactId: existing.contactId, created: false };

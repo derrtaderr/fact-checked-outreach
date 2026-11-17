@@ -181,7 +181,7 @@ test('live: owner written in HubSpot, rep told in Slack, and no token anywhere i
   assert.equal(result.code, 0, result.err);
   assert.match(result.out, /ASSIGNED\s+ana/);
   assert.deepEqual(services.calls.map((c) => `${c.method} ${new URL(c.url).hostname}`), [
-    'PATCH api.hubapi.com', 'POST api.hubapi.com', 'POST slack.com',
+    'GET api.hubapi.com', 'POST api.hubapi.com', 'POST slack.com',
   ]);
   assert.equal(services.contacts.get('dana@acme.test').owner, '1001');
   assert.equal(services.calls[0].auth, `Bearer ${HS_TOKEN}`);

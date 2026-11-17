@@ -11,10 +11,10 @@ import { fakeHubSpot, fakeSlack } from '../src/inbound/fakes.mjs';
 import { InboundAdapterError } from '../src/inbound/errors.mjs';
 import { markerFor } from '../src/inbound/message.mjs';
 
-test('assign creates a contact once per email and updates its owner after that', async () => {
+test('assign creates a contact once per email and updates an owner it may replace after that', async () => {
   const hubspot = fakeHubSpot({ owners: ['1001', '1002'] });
   const first = await hubspot.assign({ email: 'a@x.example.com', ownerId: '1001', properties: { company: 'X' } });
-  const again = await hubspot.assign({ email: 'A@x.example.com', ownerId: '1002', properties: {} });
+  const again = await hubspot.assign({ email: 'A@x.example.com', ownerId: '1002', properties: {}, mayReplace: ['1001'] });
   assert.equal(first.created, true);
   assert.equal(again.created, false);
   assert.equal(again.contactId, first.contactId);
