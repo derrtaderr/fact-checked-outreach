@@ -196,6 +196,8 @@ contacted a stranger's server on the strength of a run it could not finish.
 | `--max-leads` on a fixture `run`, or on `dlq` without `--replay` | why the flag does not apply there, and the invocation that takes it | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
 | Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
+| A value flag given twice (`--max-leads 500 --max-leads 5`) | `FLAG_REPEATED`, naming the flag and every value; nothing read, fetched or written | 2 |
+| A value flag with no value (`--signals` alone, or followed by another flag) | `FLAG_VALUE_MISSING`, naming the flag; never a fallback to the default (`--max-leads` keeps `LEAD_CEILING_INVALID`) | 2 |
 
 Both credential checks run BEFORE any file is read or any directory is created, and a test asserts
 the runs directory is still empty after a keyless invocation.
@@ -246,6 +248,12 @@ output, which is exactly why it mattered: the run summary looks correct because 
 just not the one anybody asked for. Accepted flags are declared per verb; anything else exits 2 naming
 the flag and listing what the verb takes. `--flag=value` is refused even for accepted flags, because
 supporting one spelling and ignoring the other is how this happened.
+
+The same rule covers a value flag given twice. `--max-leads 500 --max-leads 5` used to run under 500,
+because the first value won silently, so a run could bill above the last ceiling the operator typed.
+A repeated value flag now exits 2 with `FLAG_REPEATED`, and a value flag with no value (`--signals`
+alone used to fall back to `./signals`) exits 2 with `FLAG_VALUE_MISSING`. Spec:
+`docs/CEILING-FINDINGS-SPEC.md`.
 
 ### The lead ceiling, added for system map §4
 

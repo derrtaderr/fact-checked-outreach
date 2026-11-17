@@ -67,7 +67,8 @@ Usage:
   node bin/signal-desk.mjs dlq            List payloads live ingest could not accept, and replay them
 
 Flags, per verb. Anything else is refused rather than ignored, so no invocation can quietly
-become a different one than you typed. Write them as "--flag value", never "--flag=value".
+become a different one than you typed. Write them as "--flag value", never "--flag=value",
+and give each value flag once: a repeated one is refused rather than guessed at.
 
   run       --live, --signals <dir>, --max-leads <n>
   approve   --by <name>, --note <text>
@@ -977,9 +978,44 @@ function unknownFlag(verb, args) {
     }
 
     if (!accepted.includes(arg)) return `unknown flag ${arg}`;
-    if (FLAGS_WITH_VALUES.includes(arg)) index += 1;
+    if (FLAGS_WITH_VALUES.includes(arg)) {
+      const value = args[index + 1];
+      // A value flag with nothing after it, or with another flag where its value belongs, used to
+      // fall back to the default (`--signals` alone ran ./signals). --max-leads is exempt: its own
+      // parser refuses a missing value with LEAD_CEILING_INVALID, which is the code it documents.
+      if (arg !== '--max-leads' && (typeof value !== 'string' || value.startsWith('--'))) {
+        return `FLAG_VALUE_MISSING: ${arg} needs a value and got ${value === undefined ? 'nothing' : `the flag ${value}`}. Nothing was read, fetched or written.`;
+      }
+      index += 1;
+    }
   }
 
+  return repeatedValueFlag(args);
+}
+
+// A VALUE FLAG SAYS ONE THING, ONCE. docs/CEILING-FINDINGS-SPEC.md, finding 1.
+//
+// `--max-leads 500 --max-leads 5` used to run under 500, because flagValue takes the first match.
+// Neither "first wins" nor "last wins" is safe: either is a guess about which value the operator
+// meant, and for --max-leads and --signals the wrong guess is a bill. So a repeat is refused, and
+// the refusal names every value it was given. Boolean flags may repeat; they cannot disagree.
+function repeatedValueFlag(args) {
+  const seen = new Map();
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!FLAGS_WITH_VALUES.includes(arg)) continue;
+    seen.set(arg, [...(seen.get(arg) ?? []), args[index + 1]]);
+    index += 1;
+  }
+  for (const [flag, values] of seen) {
+    if (values.length > 1) {
+      return (
+        `FLAG_REPEATED: ${flag} was given ${values.length} times (${values.map((v) => JSON.stringify(v ?? null)).join(', ')}). ` +
+        'This CLI takes one value per flag and will not guess which one you meant, so nothing was read, ' +
+        `fetched or written. Type ${flag} once.`
+      );
+    }
+  }
   return null;
 }
 
