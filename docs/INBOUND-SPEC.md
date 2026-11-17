@@ -125,7 +125,10 @@ What each crash point leaves, and what the next run does.
   as they were at the claim, so correcting a typo in the file heals the retry; the ids actually used
   are journaled on `crm_written` and `slack_attempt`, and the clock compares HubSpot with the owner
   written. If the rep has left the pool, the claim is `released` with the reason and the lead is
-  claimed again from the current rotation (or waits, `REASSIGN_WAITING`, if nobody can take it). The write is
+  claimed again from the current rotation. If nobody can take it, no rep is working the lead (the
+  released rep was never told), so it is `REFUSED` with the reason, exit 4, and listed on every tick
+  and in `--plan` until a rep in the pool can take it; if every rep left in the pool has already had
+  it, it is journaled `exhausted` and parks as `NO_REP_RESPONDED`, as the clock parks it. The write is
   idempotent: read the contact by email first (`GET .../contacts/{email}?idProperty=email`); on 404
   create it; on 409 (created by the attempt that crashed) read again. A found contact gets the owner
   (`PATCH .../contacts/{email}?idProperty=email`) only if it has none, has one this tool wrote for
@@ -288,7 +291,9 @@ post) per lead per tick, and `--plan` prints the bound for the tick it previews.
 
 Each state behind exit 4 stays as it is until a person acts or a later tick succeeds, so a scheduled
 run alarms on any non-zero exit. `ALREADY_OWNED`, `OWNER_CHANGED` and `TOUCHED` are a person's
-decision, and `REASSIGN_WAITING` leaves the lead with a rep, so none of them is exit 4.
+decision, and `REASSIGN_WAITING` is given only by the clock, to a lead whose rep was told and still
+owns it in HubSpot (the read just made), so none of them is exit 4. A released claim with nobody to
+take it has no such rep and is `REFUSED`, exit 4.
 
 ## Escaping and secrets
 
