@@ -184,6 +184,9 @@ function evaluateRules(lead, config) {
 
 export const gate = {
   name: 'gate',
+  // Reaches ctx.fetch or ctx.model, which bill in live mode. The kernel requires a lead ceiling counted
+  // at or before the first stage that says this (docs/CEILING-FINDINGS-SPEC.md, fix wave 1, I3).
+  billing: true,
 
   async run(lead, ctx) {
     const config = ctx.config.gate ?? {};

@@ -18,6 +18,7 @@ import {
   ContractViolationError,
 } from './contract.mjs';
 import { SEAL_STAGE, SEAL_LEAD_ID } from './ledger.mjs';
+import { bills } from './billing.mjs';
 
 const STAGE_ERROR = 'STAGE_ERROR';
 const CONTRACT_VIOLATION = 'CONTRACT_VIOLATION';
@@ -27,16 +28,22 @@ const LEAD_CEILING_REACHED = 'LEAD_CEILING_REACHED';
 //
 // In live mode the stages from `countedFrom` onward bill per lead, so the number of leads admitted
 // to that stage is the number this run pays for. The CLI refuses to START a run whose signals are
-// over the ceiling; this is the invariant behind that courtesy, and it holds for any caller. A lead
+// over the ceiling; this is the invariant behind that courtesy, and it holds for any caller wired to a billing transport (see below). A lead
 // that would be admitted past the ceiling never runs that stage or any later one. It is REFUSED,
 // with its own ledger line, filed under the stage it was refused entry to: never a silent
 // truncation, and never a lead that simply goes missing from the report.
 //
-// A config with no `limits` and no live mode has no ceiling. That is fixture mode, which bills
-// nothing. Everything else FAILS CLOSED (docs/CEILING-FINDINGS-SPEC.md, finding 2): a live config
-// with no ceiling, or any ceiling this function cannot read, throws before the first stage runs.
-// This used to return "no ceiling" for maxLeads of null, '5' or 2.5, so a caller that got the
-// ceiling wrong billed every lead it had.
+// WHEN A CEILING IS REQUIRED is decided by the WIRING, not by a label (CEILING-FINDINGS-SPEC, fix
+// wave 1, I1 and I2). If either seam the kernel was handed is one of this repo's billing transports
+// (src/billing.mjs), a valid ceiling is required, whatever config.mode says. If neither bills, as in
+// fixture mode and in a replay from a capture, no ceiling is required, so a capture made before the
+// ceiling existed still replays.
+//
+// Any `limits` that IS present must be readable, in every mode, and FAILS CLOSED when it is not
+// (finding 2): maxLeads of null, '5' or 2.5 used to read as "no ceiling", so a caller that got the
+// ceiling wrong billed every lead it had. With billing wired, the ceiling must also be counted at or
+// before the first stage that declares `billing: true` (I3): counted later, every lead would have
+// passed through the fetching stage before the count began, and the ceiling would bound nothing.
 export class LeadCeilingMissingError extends Error {
   constructor(problem) {
     super(
@@ -49,10 +56,14 @@ export class LeadCeilingMissingError extends Error {
   }
 }
 
-function ceilingOf(config, stages) {
+export function ceilingOf(config, stages, { billing = false } = {}) {
   const limits = config?.limits;
   if (limits === undefined || limits === null) {
-    if (config?.mode === 'live') throw new LeadCeilingMissingError('this live config carries no lead ceiling');
+    if (billing) {
+      throw new LeadCeilingMissingError(
+        'this run is wired to a transport that bills and its config carries no lead ceiling',
+      );
+    }
     return null;
   }
   if (typeof limits !== 'object') throw new LeadCeilingMissingError(`config.limits is ${JSON.stringify(limits)}`);
@@ -64,6 +75,22 @@ function ceilingOf(config, stages) {
     throw new LeadCeilingMissingError(
       `config.limits.countedFrom is ${JSON.stringify(countedFrom ?? null)}, which is not a stage in this pipeline, so the ceiling would never be counted`,
     );
+  }
+  if (billing) {
+    const firstBilling = stages.findIndex((stage) => stage.billing === true);
+    if (firstBilling === -1) {
+      throw new LeadCeilingMissingError(
+        'this run is wired to a transport that bills and no stage declares billing: true, so the ' +
+          'kernel cannot tell where the ceiling has to be counted',
+      );
+    }
+    const counted = stages.findIndex((stage) => stage.name === countedFrom);
+    if (counted > firstBilling) {
+      throw new LeadCeilingMissingError(
+        `config.limits.countedFrom is ${JSON.stringify(countedFrom)}, after ${stages[firstBilling].name}, the ` +
+          'first stage that bills, so every lead would be billed there before the ceiling counted it',
+      );
+    }
   }
   return { maxLeads, countedFrom };
 }
@@ -85,7 +112,7 @@ function sortSignals(signals) {
 export async function runPipeline({ stages, signals, ctx, ledger }) {
   const leads = [];
   const summary = { PASS: 0, REFUSE: 0, NEEDS_HUMAN: 0, total: 0 };
-  const ceiling = ceilingOf(ctx.config, stages);
+  const ceiling = ceilingOf(ctx.config, stages, { billing: bills(ctx.fetch) || bills(ctx.model) });
   let admitted = 0;
 
   for (const { signal, index } of sortSignals(signals)) {

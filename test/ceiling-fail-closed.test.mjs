@@ -67,11 +67,13 @@ test('an invalid ceiling is refused in any mode, because a limits object means s
   assert.equal(calls.enrich, 0);
 });
 
-test('a live config with no limits at all is refused, never treated as fixture mode', async () => {
+// Revised in fix wave 1 (I1, I2): the guard keys on whether a billing transport is wired, not on the
+// mode label. A config labelled live with nothing that bills behind it is a replay of a capture made
+// before the ceiling existed, and must run. The wired case is in test/ceiling-wiring.test.mjs.
+test('a live LABEL with no billing transport wired and no limits runs, which is what replay needs', async () => {
   const { calls, error } = await run({ mode: 'live' });
-  assert.equal(error?.code, 'LEAD_CEILING_MISSING');
-  assert.match(error.message, /live/);
-  assert.equal(calls.enrich, 0);
+  assert.equal(error, null);
+  assert.equal(calls.enrich, 3);
 });
 
 test('a ceiling counted at a stage this pipeline does not have bounds nothing, so it is refused', async () => {

@@ -294,9 +294,12 @@ Behind it, the kernel stops a run AT the ceiling whatever its caller checked: a 
 the ceiling never runs `enrich` or anything after it, and gets its own `REFUSE` line with reason
 `LEAD_CEILING_REACHED` at `enrich`. From the CLI that state is unreachable, because the start check
 reads the same signals; it is the invariant for any other caller of the kernel, and a walker sees it
-as an ordinary refusal row in the run summary, `explain` and the dashboard. It fails closed: a live
-config with no ceiling, or one the kernel cannot read, throws `LEAD_CEILING_MISSING` before any stage
-runs, rather than running uncapped (`docs/CEILING-FINDINGS-SPEC.md`, finding 2).
+as an ordinary refusal row in the run summary, `explain` and the dashboard. It fails closed when the
+run is wired to this repo's billing transports: no ceiling, one the kernel cannot read, or one
+counted after `enrich` throws `LEAD_CEILING_MISSING` before any stage runs, whatever the `mode` label
+says. With nothing billing wired (fixture runs, `replay`), no ceiling is required, so a pre-ceiling
+live capture still replays; a capture whose ceiling was edited into nonsense is refused by name
+with exit 1 (`docs/CEILING-FINDINGS-SPEC.md`, finding 2 and fix wave 1).
 
 ### The DLQ recovery path
 

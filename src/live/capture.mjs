@@ -25,6 +25,7 @@ import { createHash } from 'node:crypto';
 
 import { canonical } from '../canonical.mjs';
 import { NoRecordingError } from '../context.mjs';
+import { bills, markBilling } from '../billing.mjs';
 
 /**
  * The capture key for one model request.
@@ -47,11 +48,13 @@ export function modelKey(request) {
  * the run acted on.
  */
 export function capturingFetcher(fetch, capture) {
-  return async function fetchAndCapture(url) {
+  const wrapped = async function fetchAndCapture(url) {
     const response = await fetch(url);
     capture[url] = response;
     return response;
   };
+  // A wrapper around a seam that bills still bills. See src/billing.mjs.
+  return bills(fetch) ? markBilling(wrapped) : wrapped;
 }
 
 /**
@@ -61,7 +64,7 @@ export function capturingFetcher(fetch, capture) {
  * enough to address it on replay and carries none of the prompt's contents into a second copy.
  */
 export function capturingModel(model, capture) {
-  return async function callAndCapture(request) {
+  const wrapped = async function callAndCapture(request) {
     const completion = await model(request);
     capture[modelKey(request)] = {
       text: completion?.text,
@@ -70,6 +73,7 @@ export function capturingModel(model, capture) {
     };
     return completion;
   };
+  return bills(model) ? markBilling(wrapped) : wrapped;
 }
 
 /**

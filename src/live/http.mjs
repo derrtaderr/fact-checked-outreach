@@ -30,6 +30,8 @@
 // reports a fault where there is none. An oversized or unparseable body is not retried either,
 // for the plainer reason that asking again produces the same enormous or the same broken answer.
 
+import { markBilling } from '../billing.mjs';
+
 export class LiveTransportError extends Error {
   constructor(stageCode, message) {
     super(message);
@@ -195,7 +197,8 @@ export function createLiveFetcher({
     throw new TypeError('createLiveFetcher requires a clock read, so a response can record when it was observed');
   }
 
-  return async function fetchLive(url) {
+  // Marked, so the kernel knows a lead ceiling is required for any run this fetcher is wired into.
+  return markBilling(async function fetchLive(url) {
     // Evidence fetched over a channel anybody on the path can rewrite is not evidence. Refused
     // before anything is sent, so a misconfigured source cannot quietly become an unauthenticated
     // one that still looks like a citation in the ledger.
@@ -257,5 +260,5 @@ export function createLiveFetcher({
     }
 
     throw lastFailure;
-  };
+  });
 }
