@@ -318,8 +318,10 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     const known = state();
     const pick = pickRep({ rotation, pool: lead.pool, last: known.pointers[lead.pool], open: openCounts(known), exclude: tried });
     if (pick.rep === undefined) {
+      // A pool that is missing or empty is not "every rep had it" ([].every is true): it waits, under
+      // its own code, journals nothing, and the lead resumes the moment the pool is back.
       const pool = rotation.pools[lead.pool] ?? [];
-      if (pool.every((rep) => tried.includes(rep.id))) {
+      if (pool.length > 0 && pool.every((rep) => tried.includes(rep.id))) {
         const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide`;
         write({ type: 'exhausted', key, attempt: attempt.attempt, detail });
         return { status: 'NO_REP_RESPONDED', rep: attempt.rep_id, detail };
