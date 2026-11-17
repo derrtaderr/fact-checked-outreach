@@ -165,3 +165,39 @@ $ node <path-to-system-map>/bin/system-map.mjs reconcile .
 
 Every cycle commits with `npm test` green, and every cycle's test was first shown red with the
 implementation reverted and the test kept.
+
+# Fix wave 1, after the independent ship-check (2026-11-16)
+
+The ship-check found that the four fixes held, and it blocked on a neighbouring hole in the same
+class. Each item below gets a failing test first, as before.
+
+## B1. A token that does not start with "--" was skipped, not checked
+
+The flag check refused unknown `--` flags and skipped everything else. So `run --live -plan`,
+`run --live —plan` (an em dash, which editors and chat apps substitute for two hyphens),
+`run --live –plan` (an en dash) and `run --live plan` all ran the real, billed run, and
+`run --live -max-leads 3` ran under the default ceiling of 10. A mistyped preview was the bill. The
+`-max-leads` half predates this branch.
+
+**Fix.** Every token is accounted for: an accepted flag, an accepted flag's value, or the verb's one
+positional argument, written first. Anything else exits 2 before anything is read, fetched or
+written. A token starting with a hyphen-minus or any dash-like character (U+2010 to U+2015, U+2212,
+and the small and fullwidth hyphen-minus) is refused as `unknown flag`, saying flags take two ASCII
+hyphens. A bare word in any other place is refused as `unexpected argument`, naming what the verb
+does take. A dash-like token is refused even in the positional slot, because no draft hash, lead id
+or run id starts with one.
+
+| Verb | Positional, first place only | Decision |
+|---|---|---|
+| `run` | none | any bare word refuses |
+| `queue` | none | any bare word refuses |
+| `dlq` | none | any bare word refuses |
+| `approve`, `reject` | the draft hash or lead id | kept; a second bare word refuses |
+| `explain` | the lead id | kept; a second bare word refuses |
+| `replay` | the run id | kept; a second bare word refuses |
+| `dashboard` | the run id, optional | kept; a second bare word refuses |
+
+## I6. `run --signals <dir>` without `--live`
+
+This ran the 14-signal fixture demo, ignored the folder and exited 0. It predates this branch. Now it
+is refused the way `--max-leads` and `--plan` are on a fixture run, naming `run --live --signals`.
