@@ -276,7 +276,61 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
         rep: attempt.rep_id,
         detail: `already assigned to ${attempt.rep_id}; ${left} minute(s) left before an untouched lead is reassigned`,
       });
+      continue;
     }
+    say(lead.key, lead.lead_id, await expire(lead.key));
+  }
+
+  // The window has passed. Read HubSpot, and only an observed "untouched" moves the lead.
+  async function expire(key) {
+    const lead = state().leads.get(key);
+    const attempt = latest(lead);
+    let seen;
+    try {
+      seen = await hubspot.read({ email: lead.brief.to });
+    } catch (error) {
+      return {
+        status: 'CLOCK_CHECK_FAILED',
+        code: error?.code ?? 'HUBSPOT_UNAVAILABLE',
+        rep: attempt.rep_id,
+        detail: `could not read the contact to see whether ${attempt.rep_id} touched it (${scrubbed(scrub, error)}). Nothing was reassigned on a guess; the next run checks again`,
+      };
+    }
+
+    if (seen === null || seen.ownerId !== attempt.owner_id) {
+      const detail = seen === null
+        ? 'the contact is no longer in HubSpot, so a person removed it; the clock stopped'
+        : `the owner in HubSpot is now ${seen.ownerId}, not ${attempt.owner_id} as written for ${attempt.rep_id}; a person reassigned it, so the clock stopped and nothing was changed`;
+      write({ type: 'owner_changed', key, attempt: attempt.attempt, owner_seen: seen?.ownerId ?? null, detail });
+      return { status: 'OWNER_CHANGED', rep: attempt.rep_id, detail };
+    }
+
+    if (seen.lastActivityAt && Date.parse(seen.lastActivityAt) >= Date.parse(attempt.crm.at)) {
+      const detail = `${attempt.rep_id} logged activity at ${seen.lastActivityAt}, after the owner was written at ${attempt.crm.at}; the clock stopped`;
+      write({ type: 'touched', key, attempt: attempt.attempt, activity_at: seen.lastActivityAt, detail });
+      return { status: 'TOUCHED', rep: attempt.rep_id, detail };
+    }
+
+    const tried = lead.attempts.map((a) => a.rep_id);
+    const known = state();
+    const pick = pickRep({ rotation, pool: lead.pool, last: known.pointers[lead.pool], open: openCounts(known), exclude: tried });
+    if (pick.rep === undefined) {
+      const pool = rotation.pools[lead.pool] ?? [];
+      if (pool.every((rep) => tried.includes(rep.id))) {
+        const detail = `untouched by every rep in "${lead.pool}" (${tried.join(', ')}); it stays with ${attempt.rep_id} and needs a person to decide`;
+        write({ type: 'exhausted', key, attempt: attempt.attempt, detail });
+        return { status: 'NO_REP_RESPONDED', rep: attempt.rep_id, detail };
+      }
+      return {
+        status: 'REASSIGN_WAITING',
+        code: pick.code,
+        rep: attempt.rep_id,
+        detail: `untouched past the window, and nobody can take it yet: ${pick.detail}. It stays with ${attempt.rep_id}; the next run tries again`,
+      };
+    }
+
+    claim(lead, pick, attempt.attempt + 1, { from: attempt.rep_id, minutes: rotation.response_minutes });
+    return complete(key);
   }
 
   return { at, outcomes: [...outcomes.values()], repaired: journal.repaired ?? null };
