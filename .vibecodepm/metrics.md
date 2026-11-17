@@ -2,8 +2,8 @@
 name: signal-desk metrics
 read_by: vibecodepm:ship-check before any signal-desk release, and any session changing the CLI's first-run output
 milestone: M4
-status: current — matches the build at lane/signal-desk-m4
-date: 2026-09-13
+status: current — matches the build at lane/row80-ceiling-findings (M4, the lead ceiling, and row 80's fixes)
+date: 2026-11-16
 supersedes: the M3 metrics, whose instrumentation table this extends rather than replaces
 ---
 

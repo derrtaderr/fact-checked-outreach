@@ -50,6 +50,12 @@
       "cite": "src/adapters.mjs:1"
     },
     {
+      "path": "src/billing.mjs",
+      "language": "node",
+      "contentHash": "faf35b4f25e7",
+      "cite": "src/billing.mjs:1"
+    },
+    {
       "path": "src/canonical.mjs",
       "language": "node",
       "contentHash": "ddbcd3017f46",
@@ -58,7 +64,7 @@
     {
       "path": "src/cli.mjs",
       "language": "node",
-      "contentHash": "1acc767e13e4",
+      "contentHash": "d2900d03eeda",
       "cite": "src/cli.mjs:1"
     },
     {
@@ -112,7 +118,7 @@
     {
       "path": "src/kernel.mjs",
       "language": "node",
-      "contentHash": "1d41db6e71ae",
+      "contentHash": "f04bf80ea2f8",
       "cite": "src/kernel.mjs:1"
     },
     {
@@ -124,19 +130,19 @@
     {
       "path": "src/live/anthropic.mjs",
       "language": "node",
-      "contentHash": "0334c5ab56f3",
+      "contentHash": "24fcf40a1140",
       "cite": "src/live/anthropic.mjs:1"
     },
     {
       "path": "src/live/capture.mjs",
       "language": "node",
-      "contentHash": "f4c6e28b77fd",
+      "contentHash": "edae3d41d091",
       "cite": "src/live/capture.mjs:1"
     },
     {
       "path": "src/live/config.mjs",
       "language": "node",
-      "contentHash": "270a7a44a6c3",
+      "contentHash": "a6fd6971a7d0",
       "cite": "src/live/config.mjs:1"
     },
     {
@@ -154,7 +160,7 @@
     {
       "path": "src/live/http.mjs",
       "language": "node",
-      "contentHash": "9efef27bbe40",
+      "contentHash": "53a885ae1885",
       "cite": "src/live/http.mjs:1"
     },
     {
@@ -196,25 +202,25 @@
     {
       "path": "src/runner.mjs",
       "language": "node",
-      "contentHash": "0cb0f0cd34af",
+      "contentHash": "825bbf095370",
       "cite": "src/runner.mjs:1"
     },
     {
       "path": "src/stages/draft.mjs",
       "language": "node",
-      "contentHash": "d7c3191fe73c",
+      "contentHash": "eb64498955b2",
       "cite": "src/stages/draft.mjs:1"
     },
     {
       "path": "src/stages/enrich.mjs",
       "language": "node",
-      "contentHash": "0554f7aa0cdf",
+      "contentHash": "eb1771730c0f",
       "cite": "src/stages/enrich.mjs:1"
     },
     {
       "path": "src/stages/gate.mjs",
       "language": "node",
-      "contentHash": "94653739a864",
+      "contentHash": "43d28172b854",
       "cite": "src/stages/gate.mjs:1"
     },
     {
@@ -920,6 +926,16 @@
       "builtin": false
     },
     {
+      "from": "src/kernel.mjs",
+      "specifier": "./billing.mjs",
+      "kind": "import",
+      "line": 21,
+      "cite": "src/kernel.mjs:21",
+      "to": "src/billing.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
       "from": "src/ledger.mjs",
       "specifier": "node:crypto",
       "kind": "import",
@@ -960,6 +976,16 @@
       "builtin": false
     },
     {
+      "from": "src/live/anthropic.mjs",
+      "specifier": "../billing.mjs",
+      "kind": "import",
+      "line": 27,
+      "cite": "src/live/anthropic.mjs:27",
+      "to": "src/billing.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
       "from": "src/live/capture.mjs",
       "specifier": "node:crypto",
       "kind": "import",
@@ -986,6 +1012,16 @@
       "line": 27,
       "cite": "src/live/capture.mjs:27",
       "to": "src/context.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/capture.mjs",
+      "specifier": "../billing.mjs",
+      "kind": "import",
+      "line": 28,
+      "cite": "src/live/capture.mjs:28",
+      "to": "src/billing.mjs",
       "external": false,
       "builtin": false
     },
@@ -1058,6 +1094,16 @@
       "to": null,
       "external": true,
       "builtin": true
+    },
+    {
+      "from": "src/live/http.mjs",
+      "specifier": "../billing.mjs",
+      "kind": "import",
+      "line": 33,
+      "cite": "src/live/http.mjs:33",
+      "to": "src/billing.mjs",
+      "external": false,
+      "builtin": false
     },
     {
       "from": "src/live/keys.mjs",
@@ -1171,10 +1217,20 @@
     },
     {
       "from": "src/runner.mjs",
-      "specifier": "./config.mjs",
+      "specifier": "./billing.mjs",
       "kind": "import",
       "line": 18,
       "cite": "src/runner.mjs:18",
+      "to": "src/billing.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/runner.mjs",
+      "specifier": "./config.mjs",
+      "kind": "import",
+      "line": 19,
+      "cite": "src/runner.mjs:19",
       "to": "src/config.mjs",
       "external": false,
       "builtin": false
@@ -1438,10 +1494,10 @@
     {
       "name": "SIGNAL_DESK_RUNS_DIR",
       "how": "via an injected env object",
-      "line": 108,
+      "line": 109,
       "path": "src/cli.mjs",
       "secretish": false,
-      "cite": "src/cli.mjs:108",
+      "cite": "src/cli.mjs:109",
       "alsoAt": []
     }
   ],
@@ -1504,14 +1560,14 @@
       "call": "writeFileSync",
       "target": "path",
       "path": "src/cli.mjs",
-      "line": 161,
-      "cite": "src/cli.mjs:161",
+      "line": 162,
+      "cite": "src/cli.mjs:162",
       "alsoWrites": 4,
       "alsoAt": [
-        "src/cli.mjs:207",
-        "src/cli.mjs:212",
-        "src/cli.mjs:255",
-        "src/cli.mjs:976"
+        "src/cli.mjs:215",
+        "src/cli.mjs:220",
+        "src/cli.mjs:263",
+        "src/cli.mjs:1034"
       ],
       "targets": [
         "path",
@@ -1540,15 +1596,20 @@
     "test/approval-workflow.test.mjs",
     "test/canonical.test.mjs",
     "test/ceiling-fail-closed.test.mjs",
+    "test/ceiling-messages.test.mjs",
+    "test/ceiling-wiring.test.mjs",
     "test/cli-ceiling.test.mjs",
     "test/cli-flag-values.test.mjs",
     "test/cli-plan.test.mjs",
+    "test/cli-strict-args.test.mjs",
     "test/cli.test.mjs",
     "test/context.test.mjs",
     "test/contract-conformance.test.mjs",
     "test/contract.test.mjs",
     "test/dashboard.test.mjs",
     "test/determinism.test.mjs",
+    "test/dlq-replay-announce.test.mjs",
+    "test/docs-row80.test.mjs",
     "test/draft-hash.test.mjs",
     "test/draft-prompt.test.mjs",
     "test/golden-ledger.test.mjs",
@@ -1567,6 +1628,7 @@
     "test/live-secret.test.mjs",
     "test/live-smoke.test.mjs",
     "test/no-network.test.mjs",
+    "test/plan-urls-dlq-advice.test.mjs",
     "test/prose-claims.test.mjs",
     "test/readme-examples.test.mjs",
     "test/redaction.test.mjs",
@@ -1585,8 +1647,8 @@
   ],
   "gaps": [],
   "counts": {
-    "modules": 41,
-    "edges": 117,
+    "modules": 42,
+    "edges": 122,
     "manifests": 1,
     "env": 1,
     "routes": 0,
@@ -1597,9 +1659,9 @@
     "authChecks": 0,
     "writes": 6,
     "shells": 0,
-    "testFiles": 47,
+    "testFiles": 53,
     "gaps": 0,
     "blockingGaps": 0
   },
-  "generated_at": "2026-11-17T01:48:48.093Z"
+  "generated_at": "2026-11-17T02:16:50.019Z"
 }

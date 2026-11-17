@@ -444,7 +444,7 @@ $ node bin/signal-desk.mjs run --live --plan --signals ./signals
 It reads the folder the run would read and prints whether the run would start or be refused, the
 evidence URLs per lead, and the expected and worst-case request counts from the table above. It
 needs no key and no secret, fetches nothing, calls no model and writes nothing. It does not verify
-signatures, so its counts are upper bounds. `dlq --replay` is held to the same ceiling and takes the same flag, because a
+signatures, so its counts are upper bounds. `dlq --replay` is held to the same ceiling and takes `--max-leads` too (not `--plan`), because a
 re-fed lead bills like a fresh one. The ceiling is written as plain digits, 1 or more, like `10` or
 `25`. Zero, a negative, a fraction, or a spelling with a sign, leading zero, exponent or spaces
 (`+5`, `007`, `1e3`) refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
@@ -472,6 +472,18 @@ in the run id and the capture, and a replay reproduces it. The default lives in
 `src/live/config.mjs` as `DEFAULT_MAX_LEADS`. The per-request limits (source timeouts, the response
 byte cap, bounded retries, the model's token cap) bound what one request costs; the ceiling bounds
 how many leads make requests. `docs/LEAD-CEILING-SPEC.md` has the decisions.
+
+### What a second run costs
+
+The approval loop is `run --live`, `queue`, `approve`, then `run --live` again, and that second run
+is not free. It re-reads the whole signals folder and runs every lead through enrich, draft and gate
+again, so it bills every lead in the folder again, the one you approved included: its fetches and
+two model calls, up to six attempts with retries. The approval is only checked at the queue stage,
+after those calls. A model draft is not deterministic, so if the redraft of the approved lead comes
+out different, it has a different hash, the approval does not cover it, and the lead parks again as
+`APPROVAL_STALE` for you to read. Approving that and running again bills the folder again. The lead
+ceiling is per run, so repeated runs are not bound by the ceiling. To keep the second run small, run
+it over a folder that holds only the leads you approved.
 
 ### What live mode changes, and what it does not
 

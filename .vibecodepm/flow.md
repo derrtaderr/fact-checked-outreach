@@ -2,8 +2,8 @@
 name: signal-desk flow map
 read_by: vibecodepm:ship-check and the user-advocate walk before any signal-desk release, and any session adding a CLI verb or a stage
 milestone: M4
-status: current — matches the build at lane/signal-desk-m4
-date: 2026-09-13
+status: current — matches the build at lane/row80-ceiling-findings (M4, the lead ceiling, and row 80's fixes)
+date: 2026-11-16
 supersedes: the M3 flow map, whose "cannot run against live data" line this milestone removes
 ---
 
@@ -233,8 +233,17 @@ The same four steps as the fixture loop, and the whole point is that it IS the s
 run --live   parks a live draft, and says how many are awaiting a human
 queue        lists it with its content hash
 approve      records the decision, bound to that hash
-run --live   the approved draft is the only thing that moves; it reaches handoff
+run --live   the approved draft reaches handoff, IF the redraft hashes the same; every lead is re-run
 ```
+
+**What the second `run --live` costs, recorded because the loop above reads as free and is not.**
+It re-reads the whole folder and runs every lead through `enrich`, `draft` and `gate` again, so it
+bills every lead in the folder again, the approved one included: their fetches and two model calls
+each, up to six attempts with retries. The approval is only consulted at `queue`, after those stages.
+A model draft is not deterministic, so if the redraft of the approved lead hashes differently, the
+old approval does not cover it and the lead parks again as `APPROVAL_STALE`; approving that and
+running again bills the folder again. The per-run ceiling bounds each run, not the number of runs.
+Not fixed, by decision: this is the owner's call (`docs/CEILING-FINDINGS-SPEC.md`, open question).
 
 A walker should check the hint at the end of `approve`: it must name `run --live` for a live draft and
 plain `run` for a fixture one. Sending a live operator to `run` lands them in the demo corpus, which
