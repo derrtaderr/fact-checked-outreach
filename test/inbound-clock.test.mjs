@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { Journal } from '../src/inbound/journal.mjs';
 import { fold } from '../src/inbound/engine.mjs';
 import { T0, minutesAfter, rotationOf, eventOf, world, run } from './helpers/inbound-world.mjs';
+import { markerFor } from '../src/inbound/message.mjs';
 
 const only = (report) => {
   assert.equal(report.outcomes.length, 1);
@@ -40,7 +41,7 @@ test('past the window and untouched: reassigned to the next rep, owner rewritten
   const posts = w.slack.posts();
   assert.equal(posts.length, 2);
   assert.equal(posts[1].channel, 'U-ben');
-  assert.equal(posts[1].marker, 'signal-desk:sig-1:1');
+  assert.equal(posts[1].marker, markerFor('sig-1', 1));
   assert.match(posts[1].text, /Reassigned to you from ana: the lead was untouched for 30 minutes/);
   assert.equal(fold(Journal.open(w.path).entries()).pointers['ae-round-robin'], 'ben', 'a reassignment takes a turn');
 });

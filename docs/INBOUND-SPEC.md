@@ -126,7 +126,10 @@ What each crash point leaves, and what the next run does.
 - **After `crm_written`, before Slack.** The owner is set, so the lead is never ownerless. The next
   run posts.
 - **After `slack_attempt`, outcome unknown** (a crash, a timeout, a dropped connection). The post may
-  or may not exist. Every message carries a marker, `signal-desk:<key>:<attempt>`. The next run asks
+  or may not exist. Every message carries a marker, `signal-desk-` and the first 24 hex characters of
+  the SHA-256 of the key and the attempt. It is in `[a-z0-9-]` only, so Slack's escaping of `&`, `<`
+  and `>` cannot change it and the bytes sent are the bytes searched, whatever the signal id holds.
+  It comes first in the notification text, which `find` searches. The next run asks
   Slack for a message carrying that marker. Found means record it, not found means post. If Slack
   cannot be asked, the lead parks as `SLACK_UNCONFIRMED` and nothing is posted, because guessing
   either way is either a double post or a rep never told. It never posts twice.
@@ -202,6 +205,11 @@ and three Slack calls per lead per tick, stated in `--plan`.
 
 ## Escaping and secrets
 
+- Length. Every block field is capped at Slack's section limit, "maximum length is 3000 characters"
+  (https://docs.slack.dev/reference/block-kit/blocks/section-block), and the notification text below
+  chat.postMessage's "limit the `text` field to 4,000 characters"
+  (https://docs.slack.dev/reference/methods/chat.postMessage), at 3,900. Both read 2026-11-16. The
+  marker comes first in the text and stands alone in its context element, so a cut never drops it.
 - Every payload-derived value printed to the terminal goes through `printable` in
   `src/terminal.mjs`.
 - In Slack, payload text only ever appears in `plain_text` block objects, which Slack renders without

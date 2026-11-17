@@ -37,16 +37,18 @@ function allPlainText(blocks) {
   return texts;
 }
 
-test('the marker names the idempotency key and the attempt', () => {
-  assert.equal(markerFor('sig-1', 0), 'signal-desk:sig-1:0');
+test('the marker is fixed by the idempotency key and the attempt, and differs between attempts', () => {
+  assert.equal(markerFor('sig-1', 0), markerFor('sig-1', 0));
+  assert.notEqual(markerFor('sig-1', 0), markerFor('sig-1', 1));
+  assert.notEqual(markerFor('sig-1', 0), markerFor('sig-2', 0));
 });
 
 test('the message goes to the rep, carries the brief, the checked draft and the marker', () => {
   const message = buildSlackMessage({ lead: lead(), rep, key: 'sig-1', attempt: 0, contactId: '501' });
   assert.equal(message.channel, 'U0001');
-  assert.equal(message.marker, 'signal-desk:sig-1:0');
+  assert.equal(message.marker, markerFor('sig-1', 0));
   const all = JSON.stringify(message.blocks);
-  for (const expected of ['Acme Robotics', 'dana@acme.example.com', 'Your pricing page', 'Saw the four visits', 'priority', '86', 'https://directory.example.com/acme', 'signal-desk:sig-1:0']) {
+  for (const expected of ['Acme Robotics', 'dana@acme.example.com', 'Your pricing page', 'Saw the four visits', 'priority', '86', 'https://directory.example.com/acme', markerFor('sig-1', 0)]) {
     assert.ok(all.includes(expected), `blocks carry ${expected}`);
   }
   assert.match(message.text, /New inbound lead: Acme Robotics/);
@@ -90,5 +92,5 @@ test('a reassignment says so, naming the rep it came from and the window that pa
   });
   assert.match(message.text, /Reassigned to you from rep-ben/);
   assert.match(message.text, /untouched for 30 minutes/);
-  assert.equal(message.marker, 'signal-desk:k:1');
+  assert.equal(message.marker, markerFor('k', 1));
 });

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import { createSlackAdapter, SLACK_BASE } from '../src/inbound/slack.mjs';
 import { secretScrubber } from '../src/live/keys.mjs';
+import { markerFor } from '../src/inbound/message.mjs';
 
 const TOKEN = 'xoxb-canary-DO-NOT-LOG-5d2e';
 
@@ -27,7 +28,7 @@ function transport(script) {
   return fn;
 }
 const adapter = (fake) => createSlackAdapter({ transport: fake, token: TOKEN, scrub: secretScrubber([TOKEN]) });
-const message = { channel: 'U0001', text: 'New inbound lead: Acme. signal-desk:k:0', blocks: [{ type: 'section' }], marker: 'signal-desk:k:0' };
+const message = { channel: 'U0001', text: `${markerFor('k', 0)} New inbound lead: Acme.`, blocks: [{ type: 'section' }], marker: markerFor('k', 0) };
 
 test('the adapter refuses to be built without a transport or a token', () => {
   assert.throws(() => createSlackAdapter({ token: TOKEN }), TypeError);
@@ -71,9 +72,9 @@ test('a dropped connection or a 5xx may have posted, so they are ambiguous', asy
 test('find opens the DM and searches its history from the attempt onward for the marker', async () => {
   const fake = transport([
     response(200, { ok: true, channel: { id: 'D9' } }),
-    response(200, { ok: true, messages: [{ ts: '1.1', text: 'other' }, { ts: '1.2', text: 'New inbound lead: Acme. signal-desk:k:0' }] }),
+    response(200, { ok: true, messages: [{ ts: '1.1', text: 'other' }, { ts: '1.2', text: `${markerFor('k', 0)} New inbound lead: Acme.` }] }),
   ]);
-  assert.deepEqual(await adapter(fake).find({ channel: 'U0001', marker: 'signal-desk:k:0', oldest: '2026-03-01T09:00:00.000Z' }), { ts: '1.2' });
+  assert.deepEqual(await adapter(fake).find({ channel: 'U0001', marker: markerFor('k', 0), oldest: '2026-03-01T09:00:00.000Z' }), { ts: '1.2' });
   assert.equal(fake.calls[0].url, `${SLACK_BASE}/conversations.open`);
   assert.deepEqual(fake.calls[0].body, { users: 'U0001' });
   const history = new URL(fake.calls[1].url);
@@ -84,7 +85,7 @@ test('find opens the DM and searches its history from the attempt onward for the
 
 test('find returns null when the marker is not in the history', async () => {
   const fake = transport([response(200, { ok: true, channel: { id: 'D9' } }), response(200, { ok: true, messages: [] })]);
-  assert.equal(await adapter(fake).find({ channel: 'U0001', marker: 'signal-desk:k:0', oldest: '2026-03-01T09:00:00.000Z' }), null);
+  assert.equal(await adapter(fake).find({ channel: 'U0001', marker: markerFor('k', 0), oldest: '2026-03-01T09:00:00.000Z' }), null);
 });
 
 test('a history Slack will not give (a missing scope) is SLACK_UNSEARCHABLE, never "not found"', async () => {

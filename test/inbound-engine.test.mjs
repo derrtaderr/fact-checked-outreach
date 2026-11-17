@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 
 import { Journal } from '../src/inbound/journal.mjs';
 import { T0, rotationOf, eventOf, world, run } from './helpers/inbound-world.mjs';
+import { markerFor } from '../src/inbound/message.mjs';
 
 const statusOf = (report, key) => report.outcomes.find((o) => o.key === key)?.status;
 
@@ -23,8 +24,8 @@ test('two new leads go to the first two reps in turn: owner written, rep told', 
     ['contact2@co2.example.com', 'o-ben'],
   ]);
   assert.deepEqual(w.slack.posts().map((p) => [p.channel, p.marker]), [
-    ['U-ana', 'signal-desk:sig-1:0'],
-    ['U-ben', 'signal-desk:sig-2:0'],
+    ['U-ana', markerFor('sig-1', 0)],
+    ['U-ben', markerFor('sig-2', 0)],
   ]);
 });
 

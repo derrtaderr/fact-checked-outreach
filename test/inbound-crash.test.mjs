@@ -13,6 +13,7 @@ import { appendFileSync } from 'node:fs';
 import { Journal } from '../src/inbound/journal.mjs';
 import { fold } from '../src/inbound/engine.mjs';
 import { eventOf, world, run } from './helpers/inbound-world.mjs';
+import { markerFor } from '../src/inbound/message.mjs';
 
 const EVENTS = [eventOf(1), eventOf(2), eventOf(3)];
 
@@ -45,9 +46,9 @@ function assertSettled(w, label) {
   assert.deepEqual(
     w.slack.posts().map((p) => [p.channel, p.marker]),
     [
-      ['U-ana', 'signal-desk:sig-1:0'],
-      ['U-ben', 'signal-desk:sig-2:0'],
-      ['U-cy', 'signal-desk:sig-3:0'],
+      ['U-ana', markerFor('sig-1', 0)],
+      ['U-ben', markerFor('sig-2', 0)],
+      ['U-cy', markerFor('sig-3', 0)],
     ],
     `${label}: every rep told exactly once`,
   );
