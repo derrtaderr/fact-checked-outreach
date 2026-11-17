@@ -161,7 +161,10 @@ disagreement a crash makes, the journal exactly one line ahead and chained to th
 accepted and the head brought up to date. Blank lines (an editor's save) are skipped. The way out,
 `inbound --recover`, accepts the journal as it is and runs that tick with every Slack post looked for
 by marker first, found or not; a lead the lost lines had given to a rep the rotation no longer picks
-meets that rep's owner in HubSpot and parks `ALREADY_OWNED`. Nothing is reposted.
+meets that rep's owner in HubSpot and parks `ALREADY_OWNED`. The lookup is only for the marker of the attempt it is making now: when the lost
+lines held a reassignment, the rep who then got the lead was told under a later attempt's marker, so
+if the recovered tick picks that same rep it does not find that message and the rep is told about the
+same lead twice.
 
 A journal whose chain is broken anywhere but a torn final line is refused, `JOURNAL_TAMPERED`, and
 nothing is called.

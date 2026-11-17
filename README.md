@@ -742,9 +742,11 @@ $ node bin/signal-desk.mjs inbound --live
 
 **On the first live run, contacts that already have an owner are left alone.** Before writing, the
 tool reads the contact; if it has an owner the tool did not write, it writes nothing, tells nobody,
-gives the rep their turn back, and prints `ALREADY_OWNED` with the owner it found. Set
-`"overwrite_owner": true` in the rotation file only if you want the rotation to take those leads
-over. `--plan` prints this rule next to every write it would make.
+gives the rep their turn back, and prints `ALREADY_OWNED` with the owner it found. Setting
+`"overwrite_owner": true` in the rotation file lets the rotation replace such owners, and it applies to leads the tool meets after it is set. A lead already parked as `ALREADY_OWNED` is not retried,
+whatever the file says later; it stays with the owner HubSpot shows, so to give it to a rep, set the
+owner in HubSpot and tell the rep yourself. `--plan` prints this rule next to every write it would
+make.
 
 `inbound --live --plan` needs no token, contacts nothing and writes nothing. It runs the tick itself
 against adapters that call nothing, so it lists the calls in the order the tick makes them, with
@@ -764,9 +766,12 @@ Next to the journal sits `journal.head`, the number of lines and the last hash, 
 append. A journal that has lost lines from its end (a restore from an older backup, a disk problem,
 a hand edit) no longer matches it, and `inbound` refuses `JOURNAL_HEAD_MISMATCH`, exit 1, calling
 nothing. If you know why, run the same command again with `--recover`. It accepts the journal as it
-is and, on that tick, looks for every Slack post by its marker before making it, so no rep is told
-twice; a lead whose owner was in the lost lines and would now go to someone else meets that owner in
-HubSpot and parks as `ALREADY_OWNED`. `--recover` needs the Slack token's `im:history` scope, the same
+is and, on that tick, looks for every Slack post by its marker before making it, so a post the lost
+lines recorded is not made a second time; a lead whose owner was in the lost lines and would now go
+to someone else meets that owner in HubSpot and parks as `ALREADY_OWNED`. One limit: it looks only for the marker of the attempt it is making now. If the lost lines
+held a reassignment, the rep who got the lead then was told under a later attempt's marker, so when
+the recovered tick picks that same rep again it does not find that message, and the rep is told
+about the same lead twice. `--recover` needs the Slack token's `im:history` scope, the same
 one every live tick needs. A trailing blank line left by an editor is not a mismatch.
 
 ### Exit codes, for a scheduled run
