@@ -43,7 +43,8 @@ export class MissingSecretError extends Error {
 
 // THE PER-RUN LEAD CEILING. docs/LEAD-CEILING-SPEC.md.
 //
-// Live mode bills per lead: every admitted lead fetches its evidence URLs and makes two model calls.
+// Live mode bills per lead: every admitted lead fetches its evidence URLs and makes two model calls,
+// each retried up to twice, so up to six model attempts. src/live/cost.mjs has the full count.
 // The per-request caps in src/live/http.mjs and src/live/anthropic.mjs bound what ONE request costs;
 // nothing else bounds how many leads make requests, and a mis-sized signals folder is a bill. Ten is
 // enough for a first live run to show every path, and raising it is a flag typed on purpose.

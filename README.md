@@ -408,7 +408,19 @@ The model defaults to `claude-sonnet-5` and `SIGNAL_DESK_MODEL` overrides it.
 ### The lead ceiling
 
 A live run bills per lead: every admitted lead fetches the URLs its payload cites and makes two
-model calls, one to draft and one to judge. So a live run has a ceiling, **10 leads unless you say
+model calls, one to draft and one to judge. Each of those requests is retried up to twice on a
+timeout, a network error, a 429 or a 5xx, so the count per lead, from the code's own constants
+(`src/live/cost.mjs`), is:
+
+| Per lead | Fetches | Model | Output tokens per model attempt |
+|---|---|---|---|
+| Expected, nothing retried | U | 2 calls | at most 2,048 |
+| Worst case, every retry | U × 3 | 6 attempts | at most 2,048 |
+
+U is the evidence URLs the payload cites, plus one if it names an identity source. There is no
+price here: none is in this repo, and whether a failed attempt is billed is your provider's rule.
+Multiply by your own price. Input tokens grow with the evidence a lead carries; the only bound on them
+is the 256 KiB cap on each source response. So a live run has a ceiling, **10 leads unless you say
 otherwise**:
 
 ```console

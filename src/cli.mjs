@@ -37,6 +37,7 @@ import {
   SECRET_VARIABLE,
 } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
+import { MODEL_CALLS_PER_LEAD, leadRequests } from './live/cost.mjs';
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
   loadDecisions,
@@ -90,7 +91,8 @@ Live mode brings your own key. Export SIGNAL_DESK_ANTHROPIC_KEY (or ANTHROPIC_AP
 and SIGNAL_DESK_SIGNAL_SECRET, put signed payload files in ./signals/, and every draft
 faces exactly the gates the fixture demo shows.
 
-A live run bills per lead, so it has a lead ceiling: ${DEFAULT_MAX_LEADS} unless --max-leads <n> says
+A live run bills per lead: its evidence fetches and ${MODEL_CALLS_PER_LEAD} model calls, which retries
+make up to ${leadRequests({}).modelCalls.worst} model attempts. So it has a lead ceiling: ${DEFAULT_MAX_LEADS} unless --max-leads <n> says
 otherwise. A signals folder holding more than the ceiling refuses to start, before anything is
 fetched, and names the count. dlq --replay is held to the same ceiling.
 
@@ -318,8 +320,9 @@ function ceilingRefusal({ signals, maxLeads, err }) {
   if (signals.length <= maxLeads) return false;
   err(
     `LEAD_CEILING_EXCEEDED: ${signals.length} signal(s) to run and a ceiling of ${maxLeads} lead(s). ` +
-      'Every admitted lead bills its evidence fetches and two model calls, so the run was refused ' +
-      'before it started. Nothing was fetched, no model was called and no run was written.',
+      `Every admitted lead bills its evidence fetches and ${MODEL_CALLS_PER_LEAD} model calls, up to ` +
+      `${leadRequests({}).modelCalls.worst} model attempts with retries, so the run was refused before it ` +
+      'started. Nothing was fetched, no model was called and no run was written.',
   );
   err(`Split the signals across runs, or raise the ceiling on purpose with --max-leads ${signals.length}.`);
   return true;
