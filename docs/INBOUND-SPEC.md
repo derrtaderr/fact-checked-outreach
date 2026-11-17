@@ -158,7 +158,9 @@ HubSpot (`GET .../contacts/{email}?idProperty=email&properties=hubspot_owner_id,
   (`touched`).
 - Else, if the window has passed since the rep was told (`slack_posted`), the lead is untouched and
   is reassigned to the next eligible rep who has not had it yet. If every rep has had it, it parks
-  for a human, `NO_REP_RESPONDED`.
+  for a human, `NO_REP_RESPONDED`. If the lead's pool is missing from the rotation file or empty, that
+  is not "every rep had it": the lead waits as `REASSIGN_WAITING` with `NO_ROTATION_FOR_POOL` or
+  `ROTATION_EMPTY`, nothing is journaled, and it resumes when the pool returns.
 
 `notes_last_updated` is computed by HubSpot, asynchronously, from the activity's own timestamp. Live
 check on the test portal: a note logged through the API moved it within 8 seconds. A rep who acts
