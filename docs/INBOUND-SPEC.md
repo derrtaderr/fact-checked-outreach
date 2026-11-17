@@ -185,7 +185,9 @@ The journal survives a crash, not a second writer. Two processes that both read 
 appends both claim, both post, and leave two lines chained to one head. So a tick takes an exclusive
 lock on its state directory (`<state>/lock`, created with `O_CREAT|O_EXCL`, holding pid, host and
 start instant) before it opens the journal, and releases it after its last write, the fixture fakes'
-files included. A second process refuses `INBOUND_LOCKED`, exit 3, before reading or writing anything.
+files included. A second process refuses `INBOUND_LOCKED`, exit 3, before it opens the journal or
+writes anything; a live tick has by then made only its Slack scope check (`auth.test`, which writes
+nothing), because the lock is taken after that check, so a token refused there creates no state.
 `--plan` takes no lock because it writes nothing.
 
 Stale rule: a lock is stale only when its host is this host and its pid is not running. The breaker
@@ -270,7 +272,7 @@ write succeeds, every lead past its window reads as untouched (and is reassigned
 post is not found. Any other answer makes fewer calls for that lead, but can free a rep (a touched
 lead, or one a person owns, stops counting against capacity), so a lead the plan shows refused
 `NO_ELIGIBLE_REP` is also listed as one that may be assigned after all. The total it prints, "At most
-N HTTP call(s)", counts each assignment at its most requests (read, create, read again, owner write)
+N HTTP call(s)", lists and counts the live tick's one `auth.test` scope check, counts each assignment at its most requests (read, create, read again, owner write)
 and is an upper bound on the tick that follows; when every answer is as assumed, the list of
 operations is exactly the tick's (`test/inbound-plan-parity.test.mjs`, 150 generated scenarios).
 

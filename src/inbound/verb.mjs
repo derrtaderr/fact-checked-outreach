@@ -277,6 +277,8 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
 export const EXIT_LOCKED = 3;
 export const EXIT_NEEDS_A_PERSON = 4;
 export const SLACK_SCOPES = Object.freeze(['chat:write', 'im:write', 'im:history']);
+// The one auth.test request every live tick makes before the lock and the journal.
+const SCOPE_CHECK_CALLS = 1;
 
 // A call failed, a lead was assigned to nobody, or a lead is parked for a person. Each of these stays
 // as it is until a person acts or the next tick succeeds, so a scheduled run must be able to alarm.
@@ -375,6 +377,8 @@ async function planTick({ out, rotation, journal, events, refused, at, runId, jo
   out(`  journal   ${journalPath} (${journal.entries().length} line(s))${journal.repaired ? `; on a real tick: ${journal.repaired}` : ''}`);
   if (journal.recovered) out(`  recover   ${journal.recovered}`);
   out('');
+  // Made by every live tick before anything else (see verbInbound), so it is listed and counted.
+  out(`  POST ${SLACK_BASE}/auth.test  (the Slack token's scope check, first; it writes nothing)`);
 
   for (const outcome of outcomes) {
     const label = `  ${shown(outcome.key)} (${shown(outcome.lead_id ?? '-')})`;
@@ -416,7 +420,7 @@ async function planTick({ out, rotation, journal, events, refused, at, runId, jo
     out(`  ${shown(key)} was refused NO_ELIGIBLE_REP above; if an answer above frees a rep (a lead found touched, or one a person owns), it may be assigned after all: up to ${HTTP_CALLS.assign} HubSpot calls and ${HTTP_CALLS.post} Slack post`);
   }
 
-  const assumed = calls.reduce((sum, op) => sum + HTTP_CALLS[op.op], 0);
+  const assumed = SCOPE_CHECK_CALLS + calls.reduce((sum, op) => sum + HTTP_CALLS[op.op], 0);
   const extra = possible.reduce((sum, op) => sum + HTTP_CALLS[op.op], 0);
   out('');
   out(`  At most ${assumed + extra} HTTP call(s) in all${extra > 0 ? ` (${assumed} as planned, ${extra} more only if a rep is freed)` : ''}. HubSpot and Slack calls are rate-limited, not billed per call.`);
