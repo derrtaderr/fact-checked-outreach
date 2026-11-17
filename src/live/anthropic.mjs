@@ -24,6 +24,7 @@
 // scrubbed before it is reported. See src/live/keys.mjs.
 
 import { scrubKey } from './keys.mjs';
+import { markBilling } from '../billing.mjs';
 
 export const MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_VERSION = '2023-06-01';
@@ -94,7 +95,8 @@ export function createLiveModel({
     );
   }
 
-  return async function callModel({ system, prompt, maxTokens: perCallMaxTokens } = {}) {
+  // Marked, so the kernel knows a lead ceiling is required for any run this model is wired into.
+  return markBilling(async function callModel({ system, prompt, maxTokens: perCallMaxTokens } = {}) {
     if (typeof prompt !== 'string' || prompt.trim() === '') {
       throw new TypeError('the model seam requires a prompt');
     }
@@ -191,5 +193,5 @@ export function createLiveModel({
     }
 
     throw lastFailure;
-  };
+  });
 }

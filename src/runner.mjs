@@ -14,7 +14,8 @@ import { Ledger } from './ledger.mjs';
 import { createContext, fixtureClock, recordedFetcher, recordedClock } from './context.mjs';
 import { capturingFetcher, capturingModel, recordedModel } from './live/capture.mjs';
 import { publicConfig } from './live/keys.mjs';
-import { runPipeline } from './kernel.mjs';
+import { runPipeline, ceilingOf } from './kernel.mjs';
+import { bills } from './billing.mjs';
 import { defaultConfig, pipeline } from './config.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -141,6 +142,9 @@ export function buildRun({
  * rather than guessing which convention was in force.
  */
 export function buildLiveRun({ signals, config, stages = pipeline, fetch, model, clock, decisions = [] }) {
+  // Checked BEFORE the run id, which serialises the config: a ceiling of Infinity or NaN used to die
+  // there as a bare TypeError rather than the LEAD_CEILING_MISSING the README names (fix wave 1, M6).
+  ceilingOf(config, stages, { billing: bills(fetch) || bills(model) });
   const runConfig = { ...config, queue: { ...config.queue, approvals: [...decisions] } };
   const recordingsSeed = {};
   const run_id = computeRunId({

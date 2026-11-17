@@ -943,7 +943,15 @@ async function verbReplay({ args, out, err, env, cwd }) {
       });
 
   const { ledger, ctx, stages, signals, run_id } = replayed;
-  await runPipeline({ stages, signals, ctx, ledger });
+  // A capture whose ceiling cannot be read (hand-edited, or from a writer with a bug) is refused by
+  // name. It used to surface as an uncaught stack trace (fix wave 1, I1).
+  try {
+    await runPipeline({ stages, signals, ctx, ledger });
+  } catch (error) {
+    if (typeof error?.code !== 'string' || !error.code.startsWith('LEAD_CEILING_')) throw error;
+    err(`${error.code}: ${error.message}`);
+    return 1;
+  }
 
   if (run_id !== runId) {
     err(`replay produced ${run_id}, which does not match ${runId}`);

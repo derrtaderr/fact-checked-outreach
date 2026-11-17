@@ -454,11 +454,19 @@ refused too, so a mistyped `--plan` can never become the billed run.
 
 Behind the start check, the kernel enforces the ceiling itself. A lead admitted past it never
 reaches `enrich` or anything after it, and gets its own `REFUSE` line with `LEAD_CEILING_REACHED`
-in the ledger, so a run handed too many leads by any caller stops at the ceiling with a record of
-every lead it declined, never a silent truncation. It fails closed: a live config with no ceiling,
-or a ceiling that is not a whole number of 1 or more (`null`, `'5'`, `2.5`, `Infinity`), or one counted
-at a stage the pipeline does not have, throws `LEAD_CEILING_MISSING` before the first stage runs, and
-`liveConfig` refuses such a value with `LEAD_CEILING_INVALID`. The ceiling is part of the run's config, so it is
+in the ledger, never a silent truncation.
+
+Exactly which callers that covers, because it is narrower than "any caller". The kernel requires a
+ceiling when the run is wired to this repo's own billing transports, the ones `createLiveFetcher`
+and `createLiveModel` return (`src/billing.mjs`), whatever the config's `mode` label says. With those
+wired, a missing ceiling, a ceiling that is not a whole number of 1 or more (`null`, `'5'`, `2.5`,
+`Infinity`), or one counted at a stage after `enrich`, the first stage that bills, throws
+`LEAD_CEILING_MISSING` before anything is fetched. `liveConfig` refuses a bad value with
+`LEAD_CEILING_INVALID`. A ceiling that is present but unreadable is refused in every mode. What it
+does not cover: a caller that writes its own fetch or model function from scratch is not recognised
+as billing, so it is bounded only if it supplies `config.limits` itself. With nothing billing wired,
+as in fixture mode and in `replay`, no ceiling is required, which is why a live capture made before
+the ceiling existed still replays. The ceiling is part of the run's config, so it is
 in the run id and the capture, and a replay reproduces it. The default lives in
 `src/live/config.mjs` as `DEFAULT_MAX_LEADS`. The per-request limits (source timeouts, the response
 byte cap, bounded retries, the model's token cap) bound what one request costs; the ceiling bounds

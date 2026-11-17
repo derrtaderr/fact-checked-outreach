@@ -73,10 +73,11 @@ crashed. `liveConfig` accepted any `maxLeads` it was handed. The README promises
    written. A thrown kernel is the right failure here: a misconfigured ceiling is a programming
    error in the caller, not a decision about a lead.
 
-**Consequence, recorded as a divergence.** A live capture written before PR #6 has no `limits`, so
-`replay` of it now throws instead of re-executing. No such capture is committed to this repo, and
-the ceiling's own spec already made the ceiling part of the run id, so a pre-ceiling capture was
-already a different run. Accepted.
+**Consequence, recorded as a divergence, and WITHDRAWN in fix wave 1 (I1).** This said a live
+capture written before PR #6 would now throw on replay, and justified it as "already a different
+run". That justification was false: the capture's run id was computed from its own config, which had
+no `limits`, and replay recomputes the id from the same config, so on main it printed "exact match".
+The regression was real and is fixed below; the kernel no longer keys on the `mode` label.
 
 ## Finding 3. "The refusal is free, so it doubles as the preview"
 
@@ -201,3 +202,44 @@ or run id starts with one.
 
 This ran the 14-signal fixture demo, ignored the folder and exited 0. It predates this branch. Now it
 is refused the way `--max-leads` and `--plan` are on a fixture run, naming `run --live --signals`.
+
+## I1, I2 and I3. The guard keys on the wiring, not on a label
+
+**What was wrong.** Finding 2's guard switched on `config.mode === 'live'`, a label the caller
+writes. Three consequences, all found by the ship-check:
+
+- I2: with the real live transports wired and the label deleted, or written `'fixture'` or `'Live'`,
+  every lead was fetched.
+- I1: a live capture made before the ceiling existed carries `mode: 'live'` and no `limits`. Replay
+  bills nothing, and it died with an uncaught `LeadCeilingMissingError`.
+- I3: a ceiling counted at `draft` or `handoff` let every lead through `enrich`, the first stage that
+  fetches, so it bounded nothing for fetches.
+
+**Decision: key on the wiring, because it is clean.** The two functions in this repo that can reach
+a metered service, `createLiveFetcher` and `createLiveModel`, mark the function they return with a
+symbol (`src/billing.mjs`). The capture wrappers carry the mark through. The kernel asks the two
+seams it was handed. Stages that reach a seam declare `billing: true` (`enrich`, `draft`, `gate`).
+
+- Billing wired: a valid ceiling is required, whatever `mode` says, and `countedFrom` must be at or
+  before the first `billing: true` stage. Counting earlier (`ingest`) is stricter and allowed. If no
+  stage declares billing, the kernel cannot place the count, so it refuses.
+- Nothing billing wired (fixture runs, `replay` from a capture): no ceiling is required. A pre-ceiling
+  capture replays as an exact match again.
+- A `limits` that is present but unreadable is refused in every mode, as in finding 2.
+- `replay` catches a `LEAD_CEILING_*` error and prints it by name with exit 1, not a stack trace.
+
+**The limit, stated plainly in the README.** A caller that writes its own fetch or model function
+from scratch is not marked, because this repo cannot know a function it did not build spends money.
+That caller is bounded only if it supplies `config.limits`. The README's "any caller" claim is
+narrowed to exactly this.
+
+**Why not key on the label and special-case replay.** Replay is not the only caller that wires
+nothing billing; tests and scripts do too. And the label is precisely what I2 showed cannot be
+trusted. The mark lives on the object that spends the money, so it cannot be mislabelled by editing
+config.
+
+## M6. `Infinity` or `NaN` through `buildLiveRun`
+
+The run id serialiser threw a bare `TypeError` on a non-finite number before the kernel saw the
+ceiling. `buildLiveRun` now runs the kernel's ceiling check first, so it throws
+`LEAD_CEILING_MISSING`, with nothing fetched.
