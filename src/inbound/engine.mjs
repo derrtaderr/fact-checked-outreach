@@ -129,11 +129,17 @@ const scrubbed = (scrub, error) => scrub(String(error?.message ?? error));
  *
  * Returns { at, outcomes: [{ key, lead_id, status, code?, detail, rep? }], repaired }.
  */
-export async function tick({ events, rotation, journal, hubspot, slack, now, scrub = (text) => text, uncertain = false }) {
+export async function tick({ events, rotation, journal, hubspot, slack, now, scrub = (text) => text, uncertain = false, onOutcome = () => {} }) {
   const at = now();
   const state = () => fold(journal.entries());
   const outcomes = new Map();
-  const say = (key, lead_id, outcome) => outcomes.set(key, { key, lead_id, ...outcome });
+  // onOutcome: called as each lead's outcome is settled, after every call made for it. --plan uses it
+  // to say which lead each recorded call belongs to.
+  const say = (key, lead_id, outcome) => {
+    const settled = { key, lead_id, ...outcome };
+    outcomes.set(key, settled);
+    onOutcome(settled);
+  };
 
   // Appends an intent or result line for one lead's attempt.
   const write = (record) => journal.append({ ...record, at: now() });

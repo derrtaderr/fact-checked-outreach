@@ -193,8 +193,8 @@ left by a crash mid-break, are never broken automatically; the refusal names the
 ## The clock
 
 The engine takes an injected clock, the same shape as the run clock (`now()`). Each `inbound`
-invocation is one tick: it takes new leads, finishes interrupted attempts, then checks every open
-assignment. Live mode reads real time. Fixture mode takes `--at <instant>`, so the demo and the tests
+invocation is one tick: it finishes interrupted attempts first, then takes new leads, then checks
+every open assignment against its clock. Live mode reads real time. Fixture mode takes `--at <instant>`, so the demo and the tests
 can say "45 minutes later" without waiting. `--at` is refused in live mode, because a live clock that
 can be typed is a clock that can be lied to.
 
@@ -250,13 +250,23 @@ fake transport only and the live post is NOT RUN.
 `inbound --live` needs `SIGNAL_DESK_HUBSPOT_TOKEN` and `SIGNAL_DESK_SLACK_TOKEN`, both checked before
 any file is read or any call made (`INBOUND_HUBSPOT_TOKEN_MISSING`, `INBOUND_SLACK_TOKEN_MISSING`),
 and a rotation file (`ROTATION_CONFIG_MISSING`; live never falls back to the synthetic reps).
-`inbound --live --plan` needs no token, contacts nothing, writes nothing, and prints every HubSpot
-and Slack call the tick would make, with method and path, and for open assignments the read it
-would make and what it would do on each answer.
+`inbound --live --plan` needs no token, contacts nothing, writes nothing, and takes no lock. It is
+the engine's own tick, run on an in-memory copy of the journal against adapters that call nothing and
+record what they are asked (`src/inbound/plan.mjs`), so its order, capacity and pointer are the
+tick's own. It prints each call with method and URL, grouped by lead. Some calls depend on answers
+only HubSpot and Slack can give, so the adapters answer the way that makes the most calls: every
+write succeeds, every lead past its window reads as untouched (and is reassigned), and an earlier
+post is not found. Any other answer makes fewer calls for that lead, but can free a rep (a touched
+lead, or one a person owns, stops counting against capacity), so a lead the plan shows refused
+`NO_ELIGIBLE_REP` is also listed as one that may be assigned after all. The total it prints, "At most
+N HTTP call(s)", counts each assignment at its most requests (read, create, read again, owner write)
+and is an upper bound on the tick that follows; when every answer is as assumed, the list of
+operations is exactly the tick's (`test/inbound-plan-parity.test.mjs`, 150 generated scenarios).
 
 Nothing in this verb bills per use. HubSpot and Slack calls are rate-limited, not metered, so the
-kernel's billing mark does not apply and none is added. The verb makes at most four HubSpot calls
-and three Slack calls per lead per tick, stated in `--plan`.
+kernel's billing mark does not apply and none is added. The verb makes at most five HubSpot calls
+(a clock read, then read, create, read again and owner write) and three Slack calls (open, history,
+post) per lead per tick, and `--plan` prints the bound for the tick it previews.
 
 ## Escaping and secrets
 
