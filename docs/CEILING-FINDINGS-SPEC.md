@@ -243,3 +243,16 @@ config.
 The run id serialiser threw a bare `TypeError` on a non-finite number before the kernel saw the
 ceiling. `buildLiveRun` now runs the kernel's ceiling check first, so it throws
 `LEAD_CEILING_MISSING`, with nothing fetched.
+
+## M1. What `--plan` prints per lead
+
+It printed a count ("2 evidence URL(s)"), while the README, flow.md and finding 3 above said it
+prints the URLs and whether an identity source is named. It now prints each URL and either the
+identity source or "no identity source named". Printing the URLs is the better side to converge on:
+where a fetch goes is what an operator checks before paying for it.
+
+## M5. Refusal advice for `dlq --replay`
+
+Over its ceiling, `dlq --replay` advised splitting the signals into runs. It re-feeds the whole
+queue at once and has no way to split, so the advice now says that, and that replaying them takes
+`--max-leads <count>`, which bills for every letter. `run --live` keeps the split advice.

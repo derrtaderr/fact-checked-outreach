@@ -62,9 +62,9 @@ test('over a ceiling the operator TYPED, the refusal says it was theirs and lead
   assert.equal(code, 2);
   assert.match(stderr, /you set with --max-leads 2/);
   assert.doesNotMatch(stderr, /raise the ceiling on purpose/, 'not told to undo the cap they just chose');
-  const split = stderr.search(/runs of at most 2/);
-  const raise = stderr.search(/--max-leads 3/);
-  assert.ok(split !== -1 && raise !== -1 && split < raise, 'splitting is offered before raising');
+  // Revised in fix wave 1 (M5): this drives dlq --replay, which cannot be split, so its advice says
+  // that instead. Split-before-raise for run --live is in test/plan-urls-dlq-advice.test.mjs.
+  assert.match(stderr, /cannot be split/);
 });
 
 test('the refusal says its count includes payloads ingest would refuse for a bad signature', async () => {

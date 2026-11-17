@@ -335,7 +335,7 @@ function deadLetterIngestRefusals({ base, report, signals, run_id, at, out }) {
 // The advice depends on where the ceiling came from (CEILING-FINDINGS-SPEC minor 1). An operator who
 // typed a low ceiling chose that cap, so telling them to raise it first argues against their own
 // decision; they are told the ceiling was theirs and offered the split first.
-function ceilingRefusal({ signals, maxLeads, fromFlag = false, err }) {
+function ceilingRefusal({ signals, maxLeads, fromFlag = false, replay = false, err }) {
   if (signals.length <= maxLeads) return false;
   const ceiling = fromFlag
     ? `a ceiling of ${maxLeads} lead(s), which you set with --max-leads ${maxLeads}`
@@ -352,7 +352,11 @@ function ceilingRefusal({ signals, maxLeads, fromFlag = false, err }) {
       'so it can count more than would bill.',
   );
   err(
-    fromFlag
+    // dlq --replay cannot be split (fix wave 1, M5): it re-feeds the whole queue, so the only advice it
+    // can follow is the ceiling.
+    replay
+      ? `dlq --replay re-feeds every dead letter at once and cannot be split, so replaying these takes --max-leads ${signals.length}, which bills for all ${signals.length}. Until then they stay in the queue.`
+      : fromFlag
       ? `Split the signals into runs of at most ${maxLeads}, or type --max-leads ${signals.length} only if you mean to bill for all ${signals.length}.`
       : `Split the signals across runs, or raise the ceiling on purpose with --max-leads ${signals.length}.`,
   );
@@ -370,7 +374,7 @@ function maxLeadsFrom(args, err) {
   }
 }
 
-async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS, fromFlag = false, announce = () => {} }) {
+async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads = DEFAULT_MAX_LEADS, fromFlag = false, replay = false, announce = () => {} }) {
   // Credentials first, before anything is read or written. See the note above.
   let key;
   let secret;
@@ -382,7 +386,7 @@ async function executeLive({ signals, dead, base, env, cwd, out, err, httpTransp
     return 2;
   }
 
-  if (ceilingRefusal({ signals, maxLeads, fromFlag, err })) return 2;
+  if (ceilingRefusal({ signals, maxLeads, fromFlag, replay, err })) return 2;
 
   // Only now has the run started. A caller's announcement printed before these checks would say a
   // replay began when it was about to be refused (CEILING-FINDINGS-SPEC minor 2).
@@ -545,7 +549,16 @@ function planLive({ args, signalsDir, maxLeads, out, err }) {
   out('');
   for (const signal of signals) {
     const lead = leadRequests(signal);
-    out(`    ${pad(signal.id ?? signal.source_file, 22)} ${lead.urls} evidence URL(s)`);
+    // The URLs themselves, not a count (fix wave 1, M1): what an operator checks before paying for
+    // a fetch is WHERE it goes.
+    out(`    ${signal.id ?? signal.source_file}, ${lead.urls} evidence URL(s)`);
+    const payload = signal?.payload ?? {};
+    for (const url of Array.isArray(payload.sources) ? payload.sources : []) out(`      source           ${url}`);
+    out(
+      typeof payload.identity_source === 'string' && payload.identity_source.trim() !== ''
+        ? `      identity source  ${payload.identity_source}`
+        : '      no identity source named',
+    );
   }
   out('');
   out('  These are upper bounds. --plan does not verify signatures, so a payload ingest refuses is');
@@ -598,6 +611,7 @@ async function verbDlq(context) {
     };
     return executeLive({
       announce,
+      replay: true,
       signals,
       dead,
       base,

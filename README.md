@@ -431,7 +431,8 @@ A signals folder holding more payloads than the ceiling refuses to start with
 `LEAD_CEILING_EXCEEDED`, naming the count and the ceiling, before a single URL is fetched or a
 model is called, and writes nothing. It counts parsed payloads, so a badly signed one counts against
 the ceiling even though ingest will refuse it and it never bills past ingest. When the ceiling was
-yours (`--max-leads`), the refusal says so and offers splitting the run before raising it. That
+yours (`--max-leads`), the refusal says so and offers splitting the folder before raising it.
+`dlq --replay` re-feeds the whole queue and cannot be split, so its refusal says that instead. That
 refusal is free only because it refuses. **Under the
 ceiling, the same command is the real, billed run**, so do not use it as a preview. The preview is
 `--plan`:
