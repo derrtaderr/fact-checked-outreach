@@ -481,6 +481,14 @@ any file is read.
 
 **A journal edited after it was written.** `JOURNAL_TAMPERED`, exit 1, nothing called.
 
+**A journal cut short, or its head file deleted.** `JOURNAL_HEAD_MISMATCH`, exit 1, nothing called.
+The journal no longer matches `journal.head`, the line count and last hash written after every
+append. If you know why (a restore from backup, a disk problem), run the same command with
+`--recover`: it accepts the journal as it is, and on that tick looks for every Slack post by its
+marker before making it, so a rep already told is not told again. A lead whose owner the lost lines
+recorded comes back as `ALREADY_OWNED` if the rotation now picks someone else, so it is not taken
+over either. A trailing blank line from an editor is not a mismatch.
+
 **`SLACK_UNCONFIRMED` that stays unconfirmed.** The output names the marker; look for it in the
 rep's messages. Granting the bot `im:history` lets the next tick settle it.
 

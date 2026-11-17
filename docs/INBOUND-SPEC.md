@@ -147,6 +147,16 @@ What each crash point leaves, and what the next run does.
   the next run for the same rep. The order HubSpot first, then Slack, is what makes "the rep was told
   about a lead they do not own" impossible.
 
+**The head file.** The chain proves no line was edited, not that none was removed from the end. So
+`journal.head` holds the line count and the last hash, written after every append (the append is
+fsynced; the head goes to a temp file, is fsynced, renamed over, and the directory fsynced). A
+journal that disagrees with it is refused, `JOURNAL_HEAD_MISMATCH`, exit 1, nothing called; the one
+disagreement a crash makes, the journal exactly one line ahead and chained to the head's hash, is
+accepted and the head brought up to date. Blank lines (an editor's save) are skipped. The way out,
+`inbound --recover`, accepts the journal as it is and runs that tick with every Slack post looked for
+by marker first, found or not; a lead the lost lines had given to a rep the rotation no longer picks
+meets that rep's owner in HubSpot and parks `ALREADY_OWNED`. Nothing is reposted.
+
 A journal whose chain is broken anywhere but a torn final line is refused, `JOURNAL_TAMPERED`, and
 nothing is called.
 

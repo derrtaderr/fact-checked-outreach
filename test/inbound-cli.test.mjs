@@ -271,7 +271,7 @@ test('inbound refuses flags it does not take', async () => {
   const result = await cli(box, ['inbound', '--max-leads', '3']);
   assert.equal(result.code, 2);
   assert.match(result.err, /unknown flag --max-leads/);
-  assert.match(result.err, /inbound accepts: --live, --plan, --rotation, --at/);
+  assert.match(result.err, /inbound accepts: --live, --plan, --rotation, --at, --recover/);
 });
 
 test('a tampered journal is refused and nothing is called', async () => {
