@@ -58,7 +58,7 @@ export const CEILING_COUNTED_FROM = 'enrich';
 export class LeadCeilingInvalidError extends Error {
   constructor(raw) {
     super(
-      `--max-leads needs a whole number of leads of 1 or more, and got ${raw === undefined ? 'nothing' : JSON.stringify(raw)}. ` +
+      `--max-leads needs a whole number of leads of 1 or more, and got ${raw === undefined ? 'nothing' : typeof raw === 'string' ? JSON.stringify(raw) : String(raw)}. ` +
         'A ceiling of zero, a negative ceiling or one that is not a number would either refuse every ' +
         'lead or bound nothing, so it is refused rather than guessed at. Nothing was read or fetched.',
     );
@@ -88,6 +88,10 @@ export function resolveSignalSecret(env = {}) {
  * construction rather than by being retyped.
  */
 export function liveConfig({ secret, startedAt, model = DEFAULT_MODEL, maxLeads = DEFAULT_MAX_LEADS } = {}) {
+  // Validated here as well as at the flag, because a script calling liveConfig never passes through
+  // the flag parser. A ceiling that is not a whole number of 1 or more bounds nothing, so it is
+  // refused rather than carried into a run. docs/CEILING-FINDINGS-SPEC.md, finding 2.
+  if (!Number.isSafeInteger(maxLeads) || maxLeads < 1) throw new LeadCeilingInvalidError(maxLeads);
   return {
     ...defaultConfig,
     mode: 'live',

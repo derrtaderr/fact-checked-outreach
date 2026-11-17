@@ -427,7 +427,10 @@ rather than being ignored, since a fixture run bills nothing. `--max-leads` give
 Behind the start check, the kernel enforces the ceiling itself. A lead admitted past it never
 reaches `enrich` or anything after it, and gets its own `REFUSE` line with `LEAD_CEILING_REACHED`
 in the ledger, so a run handed too many leads by any caller stops at the ceiling with a record of
-every lead it declined, never a silent truncation. The ceiling is part of the run's config, so it is
+every lead it declined, never a silent truncation. It fails closed: a live config with no ceiling,
+or a ceiling that is not a whole number of 1 or more (`null`, `'5'`, `2.5`, `Infinity`), or one counted
+at a stage the pipeline does not have, throws `LEAD_CEILING_MISSING` before the first stage runs, and
+`liveConfig` refuses such a value with `LEAD_CEILING_INVALID`. The ceiling is part of the run's config, so it is
 in the run id and the capture, and a replay reproduces it. The default lives in
 `src/live/config.mjs` as `DEFAULT_MAX_LEADS`. The per-request limits (source timeouts, the response
 byte cap, bounded retries, the model's token cap) bound what one request costs; the ceiling bounds

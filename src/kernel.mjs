@@ -32,12 +32,40 @@ const LEAD_CEILING_REACHED = 'LEAD_CEILING_REACHED';
 // with its own ledger line, filed under the stage it was refused entry to: never a silent
 // truncation, and never a lead that simply goes missing from the report.
 //
-// A config with no `limits` has no ceiling. That is fixture mode, which bills nothing.
-function ceilingOf(config) {
+// A config with no `limits` and no live mode has no ceiling. That is fixture mode, which bills
+// nothing. Everything else FAILS CLOSED (docs/CEILING-FINDINGS-SPEC.md, finding 2): a live config
+// with no ceiling, or any ceiling this function cannot read, throws before the first stage runs.
+// This used to return "no ceiling" for maxLeads of null, '5' or 2.5, so a caller that got the
+// ceiling wrong billed every lead it had.
+export class LeadCeilingMissingError extends Error {
+  constructor(problem) {
+    super(
+      `${problem}. A live run needs config.limits with maxLeads a whole number of 1 or more and ` +
+        'countedFrom the name of a stage in this pipeline. Nothing was run, so nothing was fetched ' +
+        'or billed and no ledger line was written.',
+    );
+    this.name = 'LeadCeilingMissingError';
+    this.code = 'LEAD_CEILING_MISSING';
+  }
+}
+
+function ceilingOf(config, stages) {
   const limits = config?.limits;
-  if (limits === null || typeof limits !== 'object') return null;
-  if (!Number.isInteger(limits.maxLeads) || typeof limits.countedFrom !== 'string') return null;
-  return { maxLeads: limits.maxLeads, countedFrom: limits.countedFrom };
+  if (limits === undefined || limits === null) {
+    if (config?.mode === 'live') throw new LeadCeilingMissingError('this live config carries no lead ceiling');
+    return null;
+  }
+  if (typeof limits !== 'object') throw new LeadCeilingMissingError(`config.limits is ${JSON.stringify(limits)}`);
+  const { maxLeads, countedFrom } = limits;
+  if (!Number.isSafeInteger(maxLeads) || maxLeads < 1) {
+    throw new LeadCeilingMissingError(`config.limits.maxLeads is ${String(maxLeads)}, which bounds nothing`);
+  }
+  if (typeof countedFrom !== 'string' || !stages.some((stage) => stage.name === countedFrom)) {
+    throw new LeadCeilingMissingError(
+      `config.limits.countedFrom is ${JSON.stringify(countedFrom ?? null)}, which is not a stage in this pipeline, so the ceiling would never be counted`,
+    );
+  }
+  return { maxLeads, countedFrom };
 }
 
 function initialLeadId(signal, index) {
@@ -57,7 +85,7 @@ function sortSignals(signals) {
 export async function runPipeline({ stages, signals, ctx, ledger }) {
   const leads = [];
   const summary = { PASS: 0, REFUSE: 0, NEEDS_HUMAN: 0, total: 0 };
-  const ceiling = ceilingOf(ctx.config);
+  const ceiling = ceilingOf(ctx.config, stages);
   let admitted = 0;
 
   for (const { signal, index } of sortSignals(signals)) {
