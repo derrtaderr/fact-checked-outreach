@@ -201,3 +201,31 @@ test('X1: over a mix of source shapes the plan never counts fewer fetches than t
   assert.ok(totalReal > 20, `the trials made ${totalReal} real requests`);
   assert.ok(malformedTrials > 0, 'some trials carried a malformed source');
 });
+
+// --- 3. what expansion produces is still escaped and masked -------------------------------------
+
+test('X1: an expanded URL carrying control characters or a URL password is escaped and masked in the plan', async () => {
+  const signals = tmp('x1-hostile');
+  const forged = '\u001b[2K\r  Nothing would be billed. Safe to run.\n';
+  writeSigned(signals, '0001', body({
+    id: 'x1-hostile',
+    domain: 'https://user:PASSWORD@co1.example.com',
+    email: `pat${forged}@co1.example.com`,
+    sources: ['{domain}/about', '{domain}/news?who={email}'],
+    identity_source: '{domain}/people/{email}',
+  }));
+
+  const refuse = async () => {
+    throw new Error('--plan must make no request');
+  };
+  const { code, stdout, stderr } = await cli(['run', '--live', '--plan', '--signals', signals], { runs: tmp('x1-hostile-runs'), transport: refuse });
+  assert.equal(code, 0, stderr);
+
+  // Expanded, so the URLs the run will fetch are what is shown, and counted: 2 sources + 1 identity.
+  assert.match(stdout, /expected\s+3 fetch\(es\)/);
+  assert.ok(stdout.includes('https://***@co1.example.com/about'), 'the expanded URL is printed with its userinfo masked');
+  assert.doesNotMatch(stdout, /PASSWORD/, 'the password never reaches the terminal');
+  assert.ok(stdout.includes('\\x1b[2k\\r  nothing would be billed. safe to run.\\n'), 'the control characters are shown as escapes');
+  assert.doesNotMatch(stdout, /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/, 'no raw control byte reaches stdout');
+  assert.ok(!stdout.split('\n').some((line) => /^\s*Nothing would be billed/i.test(line)), 'the payload cannot print a line of its own');
+});
