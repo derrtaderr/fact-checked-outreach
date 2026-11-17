@@ -274,3 +274,53 @@ flow.md's line "the approved draft is the only thing that moves" is corrected.
   cited line and checks it is the line described, so they cannot go stale silently again.
 - M4: the README says `dlq --replay` takes `--max-leads`, not "the same flag", which read as `--plan`.
 - M7: the flow.md and metrics.md frontmatter name this build and today's date instead of the M4 lane.
+
+# Fix wave 2, after ship-check pass 2 (2026-11-16)
+
+Pass 2 blessed `6a6a776` and closed every pass-1 finding. It found one important defect that wave 1
+widened, and four minors.
+
+## N-A. `--plan` printed payload text raw
+
+The preview is where an operator reads untrusted payloads, and it printed `id`, `sources` and
+`identity_source` as they came. A payload carrying ESC, CR, BEL, NUL, backspace and a right-to-left
+override rewrote the terminal and printed its own "This run would be refused" and "Nothing would be
+billed. Safe to run." lines.
+
+**Fix.** No helper in the repo fitted: the dashboard's `escapeHtml` is for HTML, and the redaction
+and key scrubbers remove secrets, not control characters. A new `src/terminal.mjs` exports
+`printable`, which leaves ordinary text alone and shows every control character as a visible escape
+(`\x1b`, `\r`, `\n`, `\u202e`): C0, DEL, C1, U+202A to U+202E, U+2066 to U+2069, U+2028 and
+U+2029. Escaping beats stripping because the operator can see the payload carried something. With
+line breaks escaped, a payload can never begin a line of its own.
+
+**Every path where payload-derived text reaches stdout or stderr, and what was done:**
+
+| Path | Payload-derived text | Done |
+|---|---|---|
+| `run --live --plan` | id or file name, each source, identity source | escaped, truncated at 200, userinfo masked |
+| run summary (`run`, `run --live`, `dlq --replay`) | lead id, which for an ingest-refused lead is the payload's own `id` | escaped |
+| `explain` | the lead id (typed, and matching the payload's), the run id, each entry's detail and evidence refs | escaped; details are not truncated |
+| `queue` | lead id, `to`, `subject`, owner, status, draft hash | escaped |
+| `approve`, `reject` | lead id, `to`, `subject`, `by` | escaped |
+| `dlq` listing | file, reason, signal id, source file name, detail | escaped; detail not truncated |
+| dashboard | everything | left: it is written to an HTML file and already passes through `escapeHtml`; the terminal sees only counts and a path |
+| refusals that echo argv (`unknown flag`, `unexpected argument`, `nothing parked matches`) | text the operator typed, not payload text | left: not payload-derived |
+| `no signal directory at <dir>` | the operator's path | left: not payload-derived |
+| the handoff and parked JSON files | everything | left: JSON-escaped files, not terminal output |
+
+## N-D. Non-string sources and long values
+
+`--plan` printed non-string sources as `12345`, `null` and `[object Object]` and counted them. Now
+it prints `(not a string: number)` and so on. Only https strings are counted in U, because the live
+fetcher refuses anything else before it sends a request (`SOURCE_INSECURE`), so nothing else can
+bill. The README's formula says "https" now. A value longer than 200 characters is cut and says
+`(N characters, first 200 shown)`.
+
+## N-E. Credentials in a URL
+
+`--plan` masks the userinfo of a printed URL: `https://user:pw@host/a` prints as
+`https://***@host/a`. The query string is printed as it is. Whether `?api_key=` is a secret depends
+on the source, and a URL the operator cannot read in full is one they cannot check before paying to
+fetch it. The ledger and the capture still hold the URL as the payload gave it; masking is for the
+terminal only.

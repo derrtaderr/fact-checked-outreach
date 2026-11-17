@@ -25,14 +25,20 @@ export const COST_FORMULA =
   `per lead, expected: U fetches + ${MODEL_CALLS_PER_LEAD} model calls; worst case, every retry: ` +
   `U × ${FETCH_ATTEMPTS} fetches + ${MODEL_CALLS_PER_LEAD} × ${MODEL_ATTEMPTS} = ` +
   `${MODEL_CALLS_PER_LEAD * MODEL_ATTEMPTS} model attempts, each asking for at most ` +
-  `${DEFAULT_MAX_TOKENS.toLocaleString('en-US')} output tokens. U is the evidence URLs a payload cites, plus ` +
-  'one if it names an identity source. The price per request is your provider\'s.';
+  `${DEFAULT_MAX_TOKENS.toLocaleString('en-US')} output tokens. U is the https evidence URLs a payload cites, plus ` +
+  'one if it names an https identity source. The price per request is your provider\'s.';
+
+// Only an https string can become a request: the live fetcher refuses anything else before it
+// sends (SOURCE_INSECURE), so a non-string or plaintext source bills nothing (fix wave 2, N-D).
+export function isFetchableUrl(value) {
+  return typeof value === 'string' && /^https:\/\//i.test(value);
+}
 
 /** The evidence URLs one parsed payload will make a live run fetch. */
 export function evidenceUrls(signal) {
   const payload = signal?.payload ?? {};
-  const sources = Array.isArray(payload.sources) ? payload.sources.length : 0;
-  const identity = typeof payload.identity_source === 'string' && payload.identity_source.trim() !== '' ? 1 : 0;
+  const sources = Array.isArray(payload.sources) ? payload.sources.filter(isFetchableUrl).length : 0;
+  const identity = isFetchableUrl(payload.identity_source) ? 1 : 0;
   return sources + identity;
 }
 

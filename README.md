@@ -417,7 +417,8 @@ timeout, a network error, a 429 or a 5xx, so the count per lead, from the code's
 | Expected, nothing retried | U | 2 calls | at most 2,048 |
 | Worst case, every retry | U × 3 | 6 attempts | at most 2,048 |
 
-U is the evidence URLs the payload cites, plus one if it names an identity source. There is no
+U is the https evidence URLs the payload cites, plus one if it names an https identity source.
+Anything else (a plaintext URL, a number, `null`) is refused before any request and bills nothing. There is no
 price here: none is in this repo, and whether a failed attempt is billed is your provider's rule.
 Multiply by your own price. Input tokens grow with the evidence a lead carries; the only bound on them
 is the 256 KiB cap on each source response. So a live run has a ceiling, **10 leads unless you say
@@ -444,7 +445,13 @@ $ node bin/signal-desk.mjs run --live --plan --signals ./signals
 It reads the folder the run would read and prints whether the run would start or be refused, the
 evidence URLs per lead, and the expected and worst-case request counts from the table above. It
 needs no key and no secret, fetches nothing, calls no model and writes nothing. It does not verify
-signatures, so its counts are upper bounds. `dlq --replay` is held to the same ceiling and takes `--max-leads` too (not `--plan`), because a
+signatures, so its counts are upper bounds. Everything it prints from a payload is made safe to read:
+control characters (including ESC, CR, LF and the bidi overrides) are shown as escapes such as `\x1b`
+rather than sent to your terminal, so a payload cannot rewrite the screen or print a line of its own;
+values longer than 200 characters are cut, with their length stated; a source that is not a string
+says so; and the user and password part of a URL (`https://user:pw@host`) prints as `***`. The query
+string is printed as it is. The same escaping applies wherever payload text reaches the terminal:
+the run summary, `explain`, `queue`, `approve` and `dlq`. `dlq --replay` is held to the same ceiling and takes `--max-leads` too (not `--plan`), because a
 re-fed lead bills like a fresh one. The ceiling is written as plain digits, 1 or more, like `10` or
 `25`. Zero, a negative, a fraction, or a spelling with a sign, leading zero, exponent or spaces
 (`+5`, `007`, `1e3`) refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses

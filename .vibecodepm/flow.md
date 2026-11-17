@@ -194,7 +194,7 @@ contacted a stranger's server on the strength of a run it could not finish.
 | More signals than the lead ceiling | `LEAD_CEILING_EXCEEDED`, naming the count, the ceiling and whether it was the default or the operator's own `--max-leads`; that the count includes badly signed payloads; splitting first when the ceiling was typed, `--max-leads <n>` otherwise, and for `dlq --replay`, which cannot be split, that `--max-leads <n>` bills for every letter; nothing fetched, nothing written | 2 |
 | `--max-leads` of 0, negative, non-numeric, missing, or spelled with a sign, leading zero or exponent | `LEAD_CEILING_INVALID`, saying it takes plain digits, before the credentials are read | 2 |
 | `--max-leads` on a fixture `run`, or on `dlq` without `--replay` | why the flag does not apply there, and the invocation that takes it | 2 |
-| `run --live --plan` | whether the run would start or be refused, the per-lead URLs and the request counts; no key needed, nothing fetched or written | 0 |
+| `run --live --plan` | whether the run would start or be refused, the per-lead URLs and the request counts; no key needed, nothing fetched or written; payload text escaped, so a hostile payload cannot print a verdict line of its own | 0 |
 | `--plan` on a fixture `run` | why it does not apply there, and `run --live --plan` | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
 | Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
