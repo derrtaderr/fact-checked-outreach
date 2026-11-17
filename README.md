@@ -695,7 +695,9 @@ rotation a lead joins.
 }
 ```
 
-`away: true` skips a rep. `capacity: n` skips a rep already holding n open leads. The pointer is the
+`away: true` skips a rep. `capacity: n` skips a rep already holding n open leads.
+`"overwrite_owner": true` at the top level lets the tool replace a HubSpot owner it did not write;
+it is off by default (see the first live run below). The pointer is the
 id of the last rep assigned, so reordering the file does not shift anyone's turn. A lead whose pool
 is missing refuses `NO_ROTATION_FOR_POOL`, an empty pool refuses `ROTATION_EMPTY`, and every rep
 skipped refuses `NO_ELIGIBLE_REP` naming each one and why. A refusal assigns nobody and does not move
@@ -731,6 +733,12 @@ $ export SIGNAL_DESK_SLACK_TOKEN=...     # bot: chat:write, im:write, im:history
 $ node bin/signal-desk.mjs inbound --live --plan
 $ node bin/signal-desk.mjs inbound --live
 ```
+
+**On the first live run, contacts that already have an owner are left alone.** Before writing, the
+tool reads the contact; if it has an owner the tool did not write, it writes nothing, tells nobody,
+gives the rep their turn back, and prints `ALREADY_OWNED` with the owner it found. Set
+`"overwrite_owner": true` in the rotation file only if you want the rotation to take those leads
+over. `--plan` prints this rule next to every write it would make.
 
 `inbound --live --plan` needs no token, contacts nothing and writes nothing. It prints every HubSpot
 and Slack call the tick would make, with method and URL, and for a lead past its window the read it

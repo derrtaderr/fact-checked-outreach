@@ -126,8 +126,10 @@ What each crash point leaves, and what the next run does.
   are journaled on `crm_written` and `slack_attempt`, and the clock compares HubSpot with the owner
   written. If the rep has left the pool, the claim is `released` with the reason and the lead is
   claimed again from the current rotation (or waits, `REASSIGN_WAITING`, if nobody can take it). The write is
-  idempotent: update the contact by email (`PATCH .../contacts/{email}?idProperty=email`); on 404
-  create it; on 409 (created by the attempt that crashed) update again. There is never a second
+  idempotent: read the contact by email first (`GET .../contacts/{email}?idProperty=email`); on 404
+  create it; on 409 (created by the attempt that crashed) read again. A found contact gets the owner
+  (`PATCH .../contacts/{email}?idProperty=email`) only if it has none, has one this tool wrote for
+  this lead, or `overwrite_owner` is set; see "An owner the tool did not write". There is never a second
   contact.
 - **After `crm_written`, before Slack.** The owner is set, so the lead is never ownerless. The next
   run posts.
@@ -147,6 +149,19 @@ What each crash point leaves, and what the next run does.
 
 A journal whose chain is broken anywhere but a torn final line is refused, `JOURNAL_TAMPERED`, and
 nothing is called.
+
+## An owner the tool did not write
+
+By default the tool never replaces a HubSpot owner it did not write. Before writing, it reads the
+contact. If the contact already has an owner and that owner is not one this tool wrote for this lead
+(the claim's, or a previous attempt's), nothing is written, nobody is told, the claim's turn is given
+back (the pointer returns to where it was, unless the pool has moved on since), and the lead parks as
+`ALREADY_OWNED` with the owner it found. A person decided that lead; the tool does not fight them,
+the same rule as `owner_changed` at a clock check.
+
+Opt in to replacing such owners with `"overwrite_owner": true` at the top of the rotation file.
+HubSpot has no conditional update, so a person who sets an owner between the read and the write can
+still be overwritten; the window is one round trip.
 
 ## The clock
 

@@ -30,6 +30,12 @@ export function parseRotationConfig(input) {
   if (!Number.isSafeInteger(minutes) || minutes < 1) {
     throw new RotationConfigError(`response_minutes is ${JSON.stringify(minutes ?? null)}, and it must be a whole number of 1 or more`);
   }
+  // overwrite_owner: opt in to replacing a HubSpot owner this tool did not write. Off by default, so a
+  // lead a person already gave to someone is left alone (ALREADY_OWNED).
+  const overwrite = input.overwrite_owner;
+  if (overwrite !== undefined && typeof overwrite !== 'boolean') {
+    throw new RotationConfigError(`overwrite_owner is ${JSON.stringify(overwrite)}; it is true or false, or left out`);
+  }
   const pools = input.pools;
   if (pools === null || typeof pools !== 'object' || Array.isArray(pools)) {
     throw new RotationConfigError('pools is missing or is not an object of pool name to a list of reps');
@@ -62,7 +68,7 @@ export function parseRotationConfig(input) {
       });
     });
   }
-  return Object.freeze({ response_minutes: minutes, pools: Object.freeze(parsed) });
+  return Object.freeze({ response_minutes: minutes, overwrite_owner: overwrite === true, pools: Object.freeze(parsed) });
 }
 
 function skipReason(rep, open) {

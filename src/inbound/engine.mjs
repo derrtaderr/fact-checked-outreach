@@ -23,6 +23,7 @@ export function fold(entries) {
 
   for (const entry of entries) {
     if (entry.type === 'claim') {
+      const previous = pointers[entry.pool];
       pointers[entry.pool] = entry.rep_id;
       let lead = leads.get(entry.key);
       if (lead === undefined) {
@@ -43,6 +44,7 @@ export function fold(entries) {
         slack_channel: null,
         slack_failure: null,
         released: null,
+        previous_pointer: previous,
       });
       continue;
     }
@@ -75,6 +77,14 @@ export function fold(entries) {
         break;
       case 'released':
         attempt.released = { at: entry.at, reason: entry.reason };
+        break;
+      case 'already_owned':
+        // The rep never had the lead, so the turn is given back, unless the pool has moved on since.
+        if (pointers[lead.pool] === attempt.rep_id) {
+          if (attempt.previous_pointer === undefined) delete pointers[lead.pool];
+          else pointers[lead.pool] = attempt.previous_pointer;
+        }
+        lead.stopped = { type: entry.type, at: entry.at, detail: entry.detail };
         break;
       case 'touched':
       case 'owner_changed':
@@ -191,6 +201,10 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
           email: lead.brief.to,
           ownerId: now_.hubspot_owner_id,
           properties: { company: lead.brief.company },
+          // Owners this tool wrote, or may have written before a crash, for this lead: replacing those
+          // is the rotation working. Any other owner is a person's decision.
+          mayReplace: [...new Set(lead.attempts.flatMap((a) => [a.owner_id, a.crm?.owner_id]).filter(Boolean))],
+          overwrite: rotation.overwrite_owner === true,
         });
       } catch (error) {
         const code = error?.code ?? 'HUBSPOT_UNAVAILABLE';
@@ -203,6 +217,13 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
           rep: rep.id,
           detail: `HubSpot did not take the owner (${detail}). ${rep.id} keeps this turn and is not told until the owner is written; ${blocked ?? 'the next run writes the owner again'}`,
         };
+      }
+      if (written.refused === 'ALREADY_OWNED') {
+        const detail =
+          `the contact already has owner ${written.ownerId} in HubSpot, which this tool did not write. It was left alone, ` +
+          `nobody was told and ${rep.id} keeps their turn. To let the tool replace owners it did not write, set "overwrite_owner": true in the rotation file`;
+        write({ type: 'already_owned', key, attempt: attempt.attempt, owner_seen: written.ownerId, detail });
+        return { status: 'ALREADY_OWNED', rep: rep.id, detail };
       }
       write({ type: 'crm_written', key, attempt: attempt.attempt, contact_id: written.contactId, owner_id: now_.hubspot_owner_id });
     }

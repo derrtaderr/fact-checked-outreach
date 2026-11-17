@@ -5,9 +5,14 @@
 // and a re-run would create a duplicate. Update by email (`idProperty=email`) either finds the contact
 // or 404s, immediately.
 //
-//   assign  PATCH /crm/v3/objects/contacts/{email}?idProperty=email   owner only
+//   assign  GET   /crm/v3/objects/contacts/{email}?idProperty=email&properties=...   read the owner first
 //           on 404, POST /crm/v3/objects/contacts                       email, owner, given properties
-//           on 409 (it appeared meanwhile), PATCH again
+//           on 409 (it appeared meanwhile), GET again and go on as for a found contact
+//           found: PATCH /crm/v3/objects/contacts/{email}?idProperty=email  owner only, and ONLY when the
+//           contact has no owner, an owner this tool wrote (`mayReplace`), or `overwrite` is set.
+//           Any other owner is a person's decision: no write, `{ refused: 'ALREADY_OWNED' }`.
+//           HubSpot has no conditional update, so a person who sets an owner between the GET and the
+//           PATCH can still lose it; the window is one round trip.
 //   read    GET   /crm/v3/objects/contacts/{email}?idProperty=email&properties=hubspot_owner_id,notes_last_updated
 //
 // `transport` is REQUIRED with no default, as in src/live/http.mjs: only src/cli.mjs builds a real one.
@@ -90,19 +95,31 @@ export function createHubSpotAdapter({ transport, token, scrub = (text) => text,
 
   const update = (email, ownerId) => call('PATCH', hubspotPaths.update(email), { properties: { hubspot_owner_id: ownerId } });
 
+  async function own(email, ownerId, found, mayReplace, overwrite) {
+    const existing = found.json?.properties?.hubspot_owner_id ?? null;
+    const contactId = String(found.json?.id);
+    if (existing === ownerId) return { contactId, created: false };
+    if (existing !== null && existing !== '' && !mayReplace.includes(existing) && !overwrite) {
+      return { contactId, created: false, refused: 'ALREADY_OWNED', ownerId: String(existing) };
+    }
+    const answer = await update(email, ownerId);
+    if (answer.status === 200) return { contactId: String(answer.json?.id ?? contactId), created: false };
+    throw failure(answer, 'the owner update');
+  }
+
   return {
-    async assign({ email, ownerId, properties = {} }) {
-      let answer = await update(email, ownerId);
-      if (answer.status === 200) return { contactId: String(answer.json?.id), created: false };
-      if (answer.status !== 404) throw failure(answer, 'the owner update');
+    async assign({ email, ownerId, properties = {}, mayReplace = [], overwrite = false }) {
+      let answer = await call('GET', hubspotPaths.read(email));
+      if (answer.status === 200) return own(email, ownerId, answer, mayReplace, overwrite);
+      if (answer.status !== 404) throw failure(answer, 'the contact read before the owner write');
 
       answer = await call('POST', hubspotPaths.create(), { properties: { email, hubspot_owner_id: ownerId, ...properties } });
       if (answer.status === 201 || answer.status === 200) return { contactId: String(answer.json?.id), created: true };
       if (answer.status !== 409) throw failure(answer, 'the contact create');
 
-      answer = await update(email, ownerId);
-      if (answer.status === 200) return { contactId: String(answer.json?.id), created: false };
-      throw failure(answer, 'the owner update after a conflict');
+      answer = await call('GET', hubspotPaths.read(email));
+      if (answer.status === 200) return own(email, ownerId, answer, mayReplace, overwrite);
+      throw failure(answer, 'the contact read after a conflict');
     },
 
     async read({ email }) {

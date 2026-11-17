@@ -36,14 +36,16 @@ test('the adapter refuses to be built without a transport or a token', () => {
   assert.throws(() => createHubSpotAdapter({ transport: async () => {}, token: ' ' }), TypeError);
 });
 
-test('assign updates an existing contact by email and changes only its owner', async () => {
-  const fake = transport([response(200, { id: '77' })]);
+test('assign reads an existing contact by email first, then changes only its owner', async () => {
+  const fake = transport([response(200, { id: '77', properties: { hubspot_owner_id: null } }), response(200, { id: '77' })]);
   const result = await adapter(fake).assign({ email: 'Dana@acme.example.com', ownerId: '1001', properties: { company: 'Acme' } });
   assert.deepEqual(result, { contactId: '77', created: false });
-  assert.equal(fake.calls[0].method, 'PATCH');
-  assert.equal(path(fake.calls[0].url), '/crm/v3/objects/contacts/Dana%40acme.example.com?idProperty=email');
-  assert.deepEqual(fake.calls[0].body, { properties: { hubspot_owner_id: '1001' } });
-  assert.equal(fake.calls[0].headers.authorization, `Bearer ${TOKEN}`);
+  assert.equal(fake.calls[0].method, 'GET');
+  assert.equal(path(fake.calls[0].url), '/crm/v3/objects/contacts/Dana%40acme.example.com?idProperty=email&properties=hubspot_owner_id,notes_last_updated');
+  assert.equal(fake.calls[1].method, 'PATCH');
+  assert.equal(path(fake.calls[1].url), '/crm/v3/objects/contacts/Dana%40acme.example.com?idProperty=email');
+  assert.deepEqual(fake.calls[1].body, { properties: { hubspot_owner_id: '1001' } });
+  assert.equal(fake.calls[1].headers.authorization, `Bearer ${TOKEN}`);
 });
 
 test('assign creates the contact on a 404, with email, owner and the given properties', async () => {
@@ -59,11 +61,12 @@ test('a create that conflicts (the contact appeared meanwhile) updates it instea
   const fake = transport([
     response(404, {}),
     response(409, { status: 'error', message: 'Contact already exists. Existing ID: 79', category: 'CONFLICT' }),
+    response(200, { id: '79', properties: { hubspot_owner_id: null } }),
     response(200, { id: '79' }),
   ]);
   const result = await adapter(fake).assign({ email: 'dana@acme.example.com', ownerId: '1001' });
   assert.deepEqual(result, { contactId: '79', created: false });
-  assert.deepEqual(fake.calls.map((c) => c.method), ['PATCH', 'POST', 'PATCH']);
+  assert.deepEqual(fake.calls.map((c) => c.method), ['GET', 'POST', 'GET', 'PATCH']);
 });
 
 test('read returns owner and Last activity date, and null for an unknown email', async () => {
