@@ -163,6 +163,15 @@ function parseJsonObject(text, url, scrub) {
 // made a shared, ordered resource look like an ordinary clock.
 
 /**
+ * Whether the live fetcher will send a request for this URL. Only an https string is; anything else
+ * is refused before a byte is sent (SOURCE_INSECURE). Exported so --plan counts with the same
+ * decision the fetcher makes, rather than a copy of it (review pass 3, X1).
+ */
+export function isFetchableUrl(value) {
+  return typeof value === 'string' && /^https:\/\//i.test(value);
+}
+
+/**
  * A live HTTPS GET, bounded, retried and shaped like the recorded fetcher.
  *
  * `transport` is REQUIRED and there is no default. The only place a real one is constructed is
@@ -202,7 +211,7 @@ export function createLiveFetcher({
     // Evidence fetched over a channel anybody on the path can rewrite is not evidence. Refused
     // before anything is sent, so a misconfigured source cannot quietly become an unauthenticated
     // one that still looks like a citation in the ledger.
-    if (!/^https:\/\//i.test(String(url))) {
+    if (!isFetchableUrl(String(url))) {
       throw new LiveTransportError(
         'SOURCE_INSECURE',
         `${url} is not an https URL, and a claim cited over plaintext is not a claim this run will stand behind`,

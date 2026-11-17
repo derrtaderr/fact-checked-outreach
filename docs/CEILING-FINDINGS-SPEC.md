@@ -312,9 +312,10 @@ line breaks escaped, a payload can never begin a line of its own.
 ## N-D. Non-string sources and long values
 
 `--plan` printed non-string sources as `12345`, `null` and `[object Object]` and counted them. Now
-it prints `(not a string: number)` and so on. Only https strings are counted in U, because the live
-fetcher refuses anything else before it sends a request (`SOURCE_INSECURE`), so nothing else can
-bill. The README's formula says "https" now. A value longer than 200 characters is cut and says
+it prints `(not a string: number)` and so on. Only URLs that are https once `{domain}` and `{email}`
+are expanded are counted in U, because the live fetcher refuses anything else before it sends a
+request (`SOURCE_INSECURE`), so nothing else can bill. The count is taken after expansion, by the
+run's own `expand()` and the fetcher's own `isFetchableUrl()` (review pass 3, X1). The README's formula says "https" now. A value longer than 200 characters is cut and says
 `(N characters, first 200 shown)`.
 
 ## N-E. Credentials in a URL

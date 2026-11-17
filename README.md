@@ -417,7 +417,7 @@ timeout, a network error, a 429 or a 5xx, so the count per lead, from the code's
 | Expected, nothing retried | U | 2 calls | at most 2,048 |
 | Worst case, every retry | U × 3 | 6 attempts | at most 2,048 |
 
-U is the https evidence URLs the payload cites, plus one if it names an https identity source.
+U is the evidence URLs the payload cites that are https once `{domain}` and `{email}` are expanded, plus one if it names an identity source that is.
 Anything else (a plaintext URL, a number, `null`) is refused before any request and bills nothing. There is no
 price here: none is in this repo, and whether a failed attempt is billed is your provider's rule.
 Multiply by your own price. Input tokens grow with the evidence a lead carries; the only bound on them

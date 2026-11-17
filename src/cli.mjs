@@ -37,7 +37,7 @@ import {
   SECRET_VARIABLE,
 } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
-import { MODEL_CALLS_PER_LEAD, leadRequests, runRequests, isFetchableUrl } from './live/cost.mjs';
+import { MODEL_CALLS_PER_LEAD, leadRequests, runRequests, plannedFetches } from './live/cost.mjs';
 import { printable, maskUrl } from './terminal.mjs';
 
 // Payload-derived text reaching the terminal goes through these (fix wave 2, N-A). `shown` is for
@@ -562,21 +562,23 @@ function planLive({ args, signalsDir, maxLeads, out, err }) {
     // a fetch is WHERE it goes.
     // Every payload-derived value is escaped, truncated and userinfo-masked (fix wave 2, N-A, N-D,
     // N-E): this is where an operator reads untrusted payloads, so it must not be forgeable.
+    // Printed AFTER {domain} and {email} are expanded, by the run's own code, so what is listed and
+    // counted is what the run fetches (review pass 3, X1).
     out(`    ${shown(signal.id ?? signal.source_file)}, ${lead.urls} evidence URL(s)`);
-    const payload = signal?.payload ?? {};
-    for (const url of Array.isArray(payload.sources) ? payload.sources : []) {
-      const note = isFetchableUrl(url)
+    const planned = plannedFetches(signal);
+    const line = ({ url, template, fetchable }) => {
+      const note = fetchable
         ? ''
-        : typeof url === 'string'
+        : url !== null
           ? '  (not https: refused before any request, not counted)'
           : '  (refused before any request, not counted)';
-      out(`      source           ${shownUrl(url)}${note}`);
+      return `${shownUrl(url ?? template)}${note}`;
+    };
+    for (const source of planned.filter((p) => p.kind === 'source')) {
+      out(`      source           ${line(source)}`);
     }
-    out(
-      typeof payload.identity_source === 'string' && payload.identity_source.trim() !== ''
-        ? `      identity source  ${shownUrl(payload.identity_source)}`
-        : '      no identity source named',
-    );
+    const identity = planned.find((p) => p.kind === 'identity');
+    out(identity === undefined ? '      no identity source named' : `      identity source  ${line(identity)}`);
   }
   out('');
   out('  These are upper bounds. --plan does not verify signatures, so a payload ingest refuses is');
