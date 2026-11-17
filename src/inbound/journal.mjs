@@ -36,7 +36,7 @@ function payloadOf(entry) {
   return payload;
 }
 
-function load(path) {
+function load(path, { readOnly = false } = {}) {
   if (!existsSync(path)) return { entries: [], repaired: null };
   const text = readFileSync(path, 'utf8');
   if (text === '') return { entries: [], repaired: null };
@@ -66,7 +66,7 @@ function load(path) {
     entries.push(Object.freeze(entry));
   });
 
-  if (repaired !== null) {
+  if (repaired !== null && !readOnly) {
     // Rewritten without the torn line, so the next append starts on a line of its own.
     writeFileSync(path, entries.map((entry) => `${canonical(entry)}\n`).join(''));
   }
@@ -92,8 +92,9 @@ export class Journal {
    * Opens (and, on the first append, creates) the journal at path. `appendLine` is injectable so a
    * test can make a write fail at an exact point, which is how the crash tests simulate a crash.
    */
-  static open(path, { appendLine = (target, text) => appendFileSync(target, text) } = {}) {
-    const { entries, repaired } = load(path);
+  static open(path, { appendLine = (target, text) => appendFileSync(target, text), readOnly = false } = {}) {
+    // readOnly: for --plan, which must write nothing, so a torn tail is reported and left in place.
+    const { entries, repaired } = load(path, { readOnly });
     return new Journal(path, entries, repaired, appendLine);
   }
 

@@ -2,7 +2,7 @@
 name: signal-desk flow map
 read_by: vibecodepm:ship-check and the user-advocate walk before any signal-desk release, and any session adding a CLI verb or a stage
 milestone: M4
-status: current — matches the build at lane/row80-ceiling-findings (M4, the lead ceiling, and row 80's fixes)
+status: current, matches the build at lane/row157-inbound-last-mile (M4, the lead ceiling, row 80's fixes, and row 157's inbound last mile)
 date: 2026-11-16
 supersedes: the M3 flow map, whose "cannot run against live data" line this milestone removes
 ---
@@ -403,6 +403,83 @@ lead. A run always reaches the end, so the ledger always carries the full pictur
 
 **A gate cannot evaluate.** It refuses with `GATE_ERROR`. A gate that cannot form an opinion has
 not granted permission. This is the fail-closed invariant and it is asserted by a test.
+
+## Inbound last mile, new in row 157
+
+A second audience for this path: an operator who already runs the pipeline and wants approved
+inbound leads owned and worked. The stranger's first two minutes are unchanged; `inbound` is reached
+after `run`, never instead of it. Spec: `docs/INBOUND-SPEC.md`.
+
+### Entry point
+
+`node bin/signal-desk.mjs inbound` in a checkout that has run at least once. It reads the latest
+run's approved handoffs (`runs/<run>/handoffs/*.json`) and the run ledger for each lead's signal id.
+No run yet: "no runs found", exit 2. Fixture mode needs nothing else: the committed synthetic
+rotation and the fakes. Live mode is `inbound --live`, with `SIGNAL_DESK_HUBSPOT_TOKEN`,
+`SIGNAL_DESK_SLACK_TOKEN` and a rotation file; `inbound --live --plan` first, which needs none of
+the tokens.
+
+### Happy path
+
+```
+node bin/signal-desk.mjs run
+node bin/signal-desk.mjs inbound --at 2026-03-01T09:00:00.000Z   ASSIGNED to ana: owner written, ana told
+node bin/signal-desk.mjs inbound --at 2026-03-01T09:10:00.000Z   CLOCK_RUNNING, nothing written
+node bin/signal-desk.mjs inbound --at 2026-03-01T09:31:00.000Z   REASSIGNED to ben, whose message says why
+```
+
+Live is the same with `--live` and real time, run on a schedule; each invocation is one tick. A tick
+finishes interrupted attempts first, then takes new leads, then checks every running clock.
+
+### States
+
+Each line of a tick's output is one lead in one of these states.
+
+| State | Means | What happens next |
+|---|---|---|
+| `ASSIGNED` | owner written in HubSpot, rep told in Slack | the clock runs |
+| `REASSIGNED` | the previous rep left it untouched past the window; the next rep has it and was told why | the clock restarts from this message |
+| `CLOCK_RUNNING` | assigned, inside the window; also what a re-delivered event shows | nothing is called |
+| `TOUCHED` | activity was logged after the owner was written | the clock stops for good |
+| `OWNER_CHANGED` | a person changed the owner in HubSpot, or removed the contact | the clock stops; the tool never fights a person |
+| `NO_REP_RESPONDED` | every rep in the pool had it untouched | it stays with the last rep and needs a person |
+| `REASSIGN_WAITING` | past the window, but every untried rep is away or at capacity | stays with the current rep; the next tick tries again |
+| `CLOCK_CHECK_FAILED` | HubSpot could not be read at a clock check | nothing is reassigned on a guess; the next tick reads again |
+| `CRM_PENDING` | HubSpot did not take the owner | nobody is told; the next tick writes the same rep again |
+| `SLACK_PENDING` | the owner is written; Slack refused the post (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) | the next tick posts it |
+| `SLACK_UNCONFIRMED` | a post may have landed (`SLACK_UNREACHABLE`) | the next tick looks for it by marker; if Slack cannot be searched (`SLACK_UNSEARCHABLE`) it is never posted again |
+| `LEAD_ALREADY_ASSIGNED` | the same person under a new signal id | skipped; takes no turn |
+| `REFUSED` | assigned nobody, with a code below | the rotation did not move |
+
+Refusal codes: `NO_ROTATION_FOR_POOL`, `ROTATION_EMPTY`, `NO_ELIGIBLE_REP` (names each rep and
+why), `LEAD_HAS_NO_EMAIL`, `HANDOFF_FORMAT_UNSUPPORTED` (an `eml` export), `SIGNAL_ID_UNKNOWN` (no
+passing ingest entry for the lead). HubSpot failure codes carried by `CRM_PENDING` and
+`CLOCK_CHECK_FAILED`: `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING` (names the scope),
+`HUBSPOT_INVALID_OWNER`, `HUBSPOT_RATE_LIMITED`, `HUBSPOT_REJECTED`, `HUBSPOT_UNAVAILABLE`.
+
+### Recovery paths
+
+**A crash anywhere in a tick.** Run it again. The journal says which rep each lead belongs to and
+how far the attempt got; the same rep is kept, HubSpot is rewritten idempotently, and a post that
+may exist is looked up before anything is posted. A torn final journal line is removed and the run
+says so.
+
+**Missing tokens.** `INBOUND_HUBSPOT_TOKEN_MISSING` or `INBOUND_SLACK_TOKEN_MISSING`, exit 2, before
+any file is read.
+
+**No rotation file in live mode.** `ROTATION_CONFIG_MISSING`, exit 2. **A malformed one.**
+`ROTATION_CONFIG_INVALID`, naming what is wrong, exit 2, in either mode.
+
+**`--at` in live mode.** `INBOUND_AT_LIVE`, exit 2. **`--at` that is not an instant.**
+`INBOUND_AT_INVALID`, exit 2. **`--plan` without `--live`.** Refused with the command meant.
+
+**A journal edited after it was written.** `JOURNAL_TAMPERED`, exit 1, nothing called.
+
+**`SLACK_UNCONFIRMED` that stays unconfirmed.** The output names the marker; look for it in the
+rep's messages. Granting the bot `im:history` lets the next tick settle it.
+
+**`NO_REP_RESPONDED`.** A person decides; reassign in HubSpot directly and the tool will not
+interfere.
 
 ## What the user cannot do in M4
 

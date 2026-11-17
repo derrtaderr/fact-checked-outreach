@@ -643,6 +643,137 @@ replay it until it passes. The line is between "we could not accept this" and "w
 said no", and only the first has a fix at the sender. Duplicates are excluded too, since a dead
 letter for a successful no-op is an invitation to redeliver.
 
+## Inbound last mile
+
+`inbound` takes the leads a run handed off (a human approved that exact draft) and does the three
+things that decide whether an inbound lead gets worked:
+
+1. **An owner in HubSpot.** The next rep in a stored rotation is written to the contact as
+   `hubspot_owner_id`. The contact is created if it does not exist, and a re-run never creates a
+   second one.
+2. **The rep told in Slack.** A direct message carrying the brief (company, contact, band, score,
+   evidence) and the checked draft.
+3. **A response clock.** If the lead is still untouched N minutes after the rep was told, it goes to
+   the next rep, whose message says it was reassigned and from whom.
+
+Nothing is sent to the prospect. The draft goes to the rep, who decides whether to send it.
+
+Try it on the fakes, with no key. `--at` sets the tick's clock, so "31 minutes later" is a value
+rather than a wait:
+
+```console
+$ node bin/signal-desk.mjs run
+$ node bin/signal-desk.mjs inbound --at 2026-03-01T09:00:00.000Z
+inbound tick at 2026-03-01T09:00:00.000Z (fixture mode: fake HubSpot and fake Slack), run run-44b10b54cba9
+  rotation  the committed synthetic reps, 30 minute response window
+
+  sig-1001     lead-29e94419ba7e    ASSIGNED              ana      owner written, ana told
+  ...
+$ node bin/signal-desk.mjs inbound --at 2026-03-01T09:31:00.000Z
+  sig-1001     lead-29e94419ba7e    REASSIGNED            ben      owner written, ben told
+```
+
+The fakes keep their state in `runs/inbound-fixture/` (`hubspot.json`, `slack.json`, and the
+journal), apart from live state, so a demo never touches a real assignment. To see the clock stop,
+set `lastActivityAt` on the contact in `hubspot.json` and tick again.
+
+### The rotation
+
+A JSON file, `inbound.json` in the working directory or `--rotation <file>`. Pools are named by the
+route band's owner (`ae-round-robin`, `sdr-queue` in the default config), so routing decides which
+rotation a lead joins.
+
+```json
+{
+  "response_minutes": 30,
+  "pools": {
+    "ae-round-robin": [
+      { "id": "ana", "hubspot_owner_id": "1001", "slack_user_id": "U0001", "capacity": 5 },
+      { "id": "ben", "hubspot_owner_id": "1002", "slack_user_id": "U0002", "away": true }
+    ]
+  }
+}
+```
+
+`away: true` skips a rep. `capacity: n` skips a rep already holding n open leads. The pointer is the
+id of the last rep assigned, so reordering the file does not shift anyone's turn. A lead whose pool
+is missing refuses `NO_ROTATION_FOR_POOL`, an empty pool refuses `ROTATION_EMPTY`, and every rep
+skipped refuses `NO_ELIGIBLE_REP` naming each one and why. A refusal assigns nobody and does not move
+the pointer.
+
+### Untouched, exactly
+
+**Untouched means** the contact's owner in HubSpot is still the rep this tool wrote, and HubSpot's
+"Last activity date" (`notes_last_updated`) is empty or earlier than the instant the owner was
+written. HubSpot sets that date when a note, call, email, meeting or task is logged on the contact.
+So a rep who logs anything has touched it, and the clock stops. A person who changes the owner in
+HubSpot stops it too, and the tool never fights them. A rep who replies from their own inbox without
+logging it in HubSpot reads as untouched. When every rep in the pool has had the lead, it stays with
+the last one and parks as `NO_REP_RESPONDED` for a person to decide.
+
+### Why a crash cannot skip a rep, assign twice or post twice
+
+Every tick writes to an append-only, hash-chained journal (`runs/inbound/journal.jsonl`): an intent
+line before each call, a result line after it. The line that claims a lead for a rep also moves the
+pointer. So after a crash the next tick knows which rep the lead belongs to, whether HubSpot was
+written, and whether a Slack post might exist. It finishes the same attempt for the same rep. A
+re-delivered event (the same signal id) assigns nothing. HubSpot is always written before Slack, so a
+rep is never told about a lead they do not own. A post whose outcome is unknown is looked up by the
+marker every message carries before anything is posted again; if Slack cannot be asked, the lead
+parks as `SLACK_UNCONFIRMED` and it never posts twice. A test crashes the tick at every journal line,
+whole and torn, and checks all three properties after recovery.
+
+### Live
+
+```console
+$ export SIGNAL_DESK_HUBSPOT_TOKEN=...   # private app: crm.objects.contacts.read, crm.objects.contacts.write
+$ export SIGNAL_DESK_SLACK_TOKEN=...     # bot: chat:write, im:write, im:history
+$ node bin/signal-desk.mjs inbound --live --plan
+$ node bin/signal-desk.mjs inbound --live
+```
+
+`inbound --live --plan` needs no token, contacts nothing and writes nothing. It prints every HubSpot
+and Slack call the tick would make, with method and URL, and for a lead past its window the read it
+would make and who would get the lead. Without either token, `--live` refuses
+(`INBOUND_HUBSPOT_TOKEN_MISSING`, `INBOUND_SLACK_TOKEN_MISSING`) before reading a file. Without a
+rotation file it refuses `ROTATION_CONFIG_MISSING`; live never falls back to the synthetic reps.
+`--at` is refused in live mode, which reads real time. Run `inbound --live` on a schedule (cron, a
+launchd job) to move the clock; each run is one tick.
+
+Tokens stay inside the adapters. They are never printed, logged or written to the run directory, and
+upstream error text is scrubbed before it is recorded. In Slack, payload text only appears in
+`plain_text` blocks, so a company named `<!channel>` pings nobody.
+
+**What was verified live, and what was not.** The engine and the HubSpot adapter ran against a HubSpot
+developer test portal on 2026-11-16, with the fake Slack: two leads created and owned, a re-run that
+assigned nothing and created no duplicate, a crash between the HubSpot write and its journal line
+recovered with the same contact, a logged note stopping one lead's clock (`TOUCHED`) and the other
+lead reassigned after the window (`REASSIGNED`). That portal has one owner, so both reps in the test
+rotation mapped to it and the reassignment rewrote the same owner id. Every test record was deleted.
+The live Slack post was not run; there was no Slack workspace for it, so the Slack adapter is tested
+against a fake transport only.
+
+### What HubSpot Free and Starter cannot do for this job (read 2026-11-16)
+
+- **No native rotation.** HubSpot's "Rotate record to owner" workflow action needs a Sales Hub or
+  Service Hub Professional or Enterprise subscription, and workflows themselves need Professional or
+  Enterprise. On Free and Starter the rotation has to live outside HubSpot, which is what this is.
+  https://knowledge.hubspot.com/workflows/assign-and-rotate-record-owners-using-workflows (page
+  last updated October 26, 2026).
+- **A tighter rate limit.** Private apps on Free and Starter get 100 requests per 10 seconds and
+  250,000 per day per account (Professional gets 190 and 625,000). The CRM search API has its own
+  stricter limits and sends no rate-limit headers, so this reads and updates contacts by email
+  (`idProperty=email`) and never searches. A tick makes at most four HubSpot calls per lead.
+  https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines.md
+- **Batch upsert by email cannot do a partial update**, which is why this updates one contact at a
+  time. https://developers.hubspot.com/docs/api-reference/crm-contacts-v3/guide
+- "Last activity date" is "the most recent already past date and time a note, call, [...] was logged
+  on the contact record."
+  https://knowledge.hubspot.com/properties/hubspots-default-contact-properties (page last updated
+  September 21, 2026).
+
+The spec, with every crash point and the prior art it was checked against, is `docs/INBOUND-SPEC.md`.
+
 ## What this milestone is
 
 M1 built the kernel, the stage contract, the hash-chained ledger, all eight stages end to end in
@@ -713,7 +844,7 @@ carrying the stage-ownership argument for each hostile catch, the dashboard's co
 escaping rule. `docs/M2-SPEC.md` and `docs/M1-SPEC.md` are the earlier ones, each with its own
 addendum on what the implementation taught.
 `docs/ADAPTERS.md` is the sender adapter contract. `docs/LEAD-CEILING-SPEC.md` is the per-run lead
-ceiling on live mode.
+ceiling on live mode. `docs/INBOUND-SPEC.md` is the inbound last mile.
 
 ### Known boundaries
 
