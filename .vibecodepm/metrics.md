@@ -161,13 +161,17 @@ reading the journal, which is the only record and needs no instrumentation of it
 |---|---|
 | leads owned | distinct `key` with a `crm_written` line |
 | time to touch | `touched.activity_at` minus the attempt's `slack_posted.at`, per lead |
-| reassignment rate | leads with a `claim` at `attempt` 1 or more, over leads claimed |
+| reassignment rate | leads with a `claim` carrying `reassigned` (untouched past the window), over leads claimed. A `claim` at attempt 1 or more without it follows a `released` line and is not a reassignment |
 | unanswered | leads with an `exhausted` line (`NO_REP_RESPONDED`) |
 | unsettled | leads whose latest attempt has a `slack_attempt` and no `slack_posted` (`SLACK_UNCONFIRMED`) |
+| already owned | leads with an `already_owned` line: a person had given the contact an owner before the tool, so it was left alone |
+| released | `released` lines: a claimed rep had left the rotation file before the attempt finished |
 
 Fixture mode writes the same lines to `runs/inbound-fixture/journal.jsonl`, which is what the tests
-read. Nothing reads the live journal on a schedule yet; when a live motion exists, a non-zero
-"unanswered" or "unsettled" count is paged the same way the DLQ count is (system map section 5).
+read. Nothing reads the live journal on a schedule yet. What a scheduled tick does give is its exit
+code: 4 whenever a lead is unsettled, parked unanswered, refused or waiting on a failed call, so the
+scheduler can page on it; when a live motion exists, the counts above are paged the same way the DLQ
+count is (system map section 5).
 
 ## The number that matters after activation
 

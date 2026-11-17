@@ -140,7 +140,10 @@ What each crash point leaves, and what the next run does.
   It comes first in the notification text, which `find` searches. The next run asks
   Slack for a message carrying that marker. Found means record it, not found means post. If Slack
   cannot be asked, the lead parks as `SLACK_UNCONFIRMED` and nothing is posted, because guessing
-  either way is either a double post or a rep never told. It never posts twice.
+  either way is either a double post or a rep never told. It never posts twice on a guess: the only
+  repost follows a refusal that proves nothing was posted (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) or
+  a history lookup that did not show the marker. The lookup reads up to 200 messages of the DM from
+  the attempt's instant on (from the newest, after `--recover`), which is its one limit.
 - **HubSpot refuses or is down.** `crm_failed`, no Slack post, reported as `CRM_PENDING` (and for a
   refusal that repeats until a person acts, `HUBSPOT_INVALID_OWNER` or a token problem, the output
   names what to fix rather than promising the retry works), retried on

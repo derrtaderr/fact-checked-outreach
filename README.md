@@ -724,8 +724,12 @@ written, and whether a Slack post might exist. It finishes the same attempt for 
 re-delivered event (the same signal id) assigns nothing. HubSpot is always written before Slack, so a
 rep is never told about a lead they do not own. A post whose outcome is unknown is looked up by the
 marker every message carries before anything is posted again; if Slack cannot be asked, the lead
-parks as `SLACK_UNCONFIRMED` and it never posts twice. A test crashes the tick at every journal line,
-whole and torn, and checks all three properties after recovery.
+parks as `SLACK_UNCONFIRMED` and it never posts twice on a guess. The only repost is after Slack
+refused the post (an answer that proves nothing was posted) or after Slack's history, when asked,
+did not show the marker. That lookup reads the newest 200 messages of the rep's DM from the attempt's
+instant on, so a post buried under 200 later messages in the same minute would be posted again. Two
+ticks never run at once on one state directory (see "One tick at a time"). A test crashes the tick at
+every journal line, whole and torn, and checks all three properties after recovery.
 
 ### Live
 
