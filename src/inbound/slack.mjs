@@ -20,6 +20,29 @@ export const SLACK_TIMEOUT_MS = 10000;
 const SKEW_SECONDS = 60;
 const MAX_DETAIL = 300;
 
+// The chat.postMessage errors that prove nothing was posted: every error Slack documents for the
+// method (https://docs.slack.dev/reference/methods/chat.postMessage, read 2026-11-17) except
+// internal_error and fatal_error, documented as "It's possible some aspect of the operation succeeded
+// before the error was raised", and service_unavailable, which does not say whether it ran. Those
+// three, and any error not in this list, may have posted, so they go through find before a repost.
+const POST_REFUSALS = new Set([
+  'access_denied', 'accesslimited', 'account_inactive', 'agent_prompt_display_not_allowed', 'app_access_restricted',
+  'as_user_not_supported', 'attachment_payload_limit_exceeded', 'cannot_reply_to_message', 'channel_not_found',
+  'deprecated_endpoint', 'draft_already_deleted', 'draft_already_sent', 'draft_has_conflict', 'draft_not_found',
+  'duplicate_channel_not_found', 'duplicate_message_not_found', 'ekm_access_denied', 'enterprise_is_restricted',
+  'invalid_arg_name', 'invalid_arguments', 'invalid_array_arg', 'invalid_auth', 'invalid_blocks', 'invalid_blocks_format',
+  'invalid_charset', 'invalid_form_data', 'invalid_metadata_format', 'invalid_metadata_schema', 'invalid_post_type',
+  'is_archived', 'markdown_text_conflict', 'message_limit_exceeded', 'messages_tab_disabled',
+  'metadata_must_be_sent_from_app', 'metadata_too_large', 'method_deprecated', 'missing_argument', 'missing_file_data',
+  'missing_post_type', 'missing_scope', 'msg_blocks_too_long', 'no_permission', 'no_text', 'not_allowed_token_type',
+  'not_authed', 'not_in_channel', 'org_login_required', 'posting_to_channel_denied', 'rate_limited', 'ratelimited',
+  'request_timeout', 'restricted_action', 'restricted_action_non_threadable_channel', 'restricted_action_read_only_channel',
+  'restricted_action_thread_locked', 'restricted_action_thread_only_channel', 'send_on_behalf_not_allowed',
+  'slack_connect_canvas_sharing_blocked', 'slack_connect_file_link_sharing_blocked', 'slack_connect_lists_sharing_blocked',
+  'team_access_not_granted', 'team_added_to_org', 'team_not_found', 'token_expired', 'token_revoked',
+  'too_many_attachments', 'too_many_contact_cards', 'two_factor_setup_required',
+]);
+
 function short(text) {
   const compact = String(text).replace(/\s+/g, ' ').trim();
   return compact.length <= MAX_DETAIL ? compact : `${compact.slice(0, MAX_DETAIL - 1)}…`;
@@ -83,7 +106,11 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
         throw new InboundAdapterError('SLACK_UNREACHABLE', `Slack answered ${answer.status} with ${short(scrub(answer.text))}, which does not say whether the post landed`, { ambiguous: true });
       }
       if (answer.json.ok !== true) {
-        throw new InboundAdapterError('SLACK_REJECTED', `Slack answered ok: false, ${short(scrub(String(answer.json.error)))}, so nothing was posted`);
+        const error = String(answer.json.error);
+        if (!POST_REFUSALS.has(error)) {
+          throw new InboundAdapterError('SLACK_REJECTED', `Slack answered ok: false, ${short(scrub(error))}, which Slack does not document as a refusal, so the post may have landed`, { ambiguous: true });
+        }
+        throw new InboundAdapterError('SLACK_REJECTED', `Slack answered ok: false, ${short(scrub(error))}, so nothing was posted`);
       }
       return { ts: String(answer.json.ts) };
     },

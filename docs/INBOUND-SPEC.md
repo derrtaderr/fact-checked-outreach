@@ -109,7 +109,7 @@ line records the instant it was written (`at`). State is a pure fold of the jour
 | `crm_failed` | after HubSpot refused or was unreachable | nothing posted; the next tick retries the write for R |
 | `slack_attempt` | before the post | a post may now exist |
 | `slack_posted` | after Slack said ok | the rep was told; the clock starts |
-| `slack_failed` | after Slack answered `ok: false` | nothing was posted; safe to post again |
+| `slack_failed` | after Slack answered `ok: false` with an error it documents as a refusal | nothing was posted; safe to post again |
 | `touched` / `owner_changed` | at a clock check | the clock stops |
 | `exhausted` | at a clock check | every rep had a turn; parked for a human, `NO_REP_RESPONDED`. Every later tick reads the contact and lists it again until a person gives it an owner, logs activity or deletes it (then `owner_changed` or `touched`) |
 | `released` | on resuming an attempt | the claimed rep is no longer in the lead's pool; the claim is let go with the reason, and the lead is claimed again from the rotation as it is now |
@@ -243,7 +243,12 @@ The live adapters take a transport as a required argument with no default, like 
 is not retried inside the adapter: the next tick is the retry, and the journal says exactly where it
 resumes. Any failure after the request may have left (a dropped connection, a timeout, a 5xx, or a
 200 whose body cannot be read) is `ambiguous`: for Slack it goes through find-before-repost, never
-straight to a second post. The engine treats any error from `slack.post` that is not a named,
+straight to a second post. So is a chat.postMessage `ok: false` whose error Slack does not document as
+a refusal: `internal_error` and `fatal_error`, which Slack documents as "It's possible some aspect of
+the operation succeeded before the error was raised", `service_unavailable`, which does not say
+whether it ran, and any error not in Slack's list for the method
+(https://docs.slack.dev/reference/methods/chat.postMessage, read 2026-11-17). Every other documented
+error stays `SLACK_REJECTED`, a refusal; the list is `POST_REFUSALS` in `src/inbound/slack.mjs`. The engine treats any error from `slack.post` that is not a named,
 unambiguous refusal (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) the same way. Errors carry a named code: `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING`,
 `HUBSPOT_INVALID_OWNER`, `HUBSPOT_RATE_LIMITED`, `HUBSPOT_UNAVAILABLE`, `SLACK_REJECTED`,
 `SLACK_UNREACHABLE`.

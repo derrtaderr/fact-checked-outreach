@@ -100,3 +100,50 @@ test('a history Slack will not give (a missing scope) is SLACK_UNSEARCHABLE, nev
 test('the token never appears in an error', async () => {
   await assert.rejects(adapter(transport([new Error(`bad auth ${TOKEN}`)])).post(message), (error) => !error.message.includes(TOKEN));
 });
+
+// Review pass 2, item 3: Slack documents internal_error and fatal_error on chat.postMessage as "It's
+// possible some aspect of the operation succeeded before the error was raised"
+// (https://docs.slack.dev/reference/methods/chat.postMessage, read 2026-11-17). Recorded as a refusal,
+// the next tick posted again and the rep got two messages under one marker.
+test('item 3: an ok: false that Slack documents as possibly partly done, or does not document, is ambiguous', async () => {
+  for (const error of ['internal_error', 'fatal_error', 'service_unavailable', 'user_not_found', 'an_error_slack_added_later']) {
+    const fake = transport([response(200, { ok: false, error })]);
+    await assert.rejects(adapter(fake).post(message), (thrown) => {
+      assert.equal(thrown.ambiguous, true, `${error} must go through find before any repost`);
+      return true;
+    });
+  }
+  for (const error of ['channel_not_found', 'not_in_channel', 'invalid_auth', 'missing_scope', 'ratelimited', 'is_archived']) {
+    const fake = transport([response(200, { ok: false, error })]);
+    await assert.rejects(adapter(fake).post(message), (thrown) => {
+      assert.equal(thrown.ambiguous, false, `${error} is a documented refusal`);
+      return true;
+    });
+  }
+});
+
+test('item 3: an internal_error after the message landed does not lead to a second post', async () => {
+  const { tick } = await import('../src/inbound/engine.mjs');
+  const { Journal } = await import('../src/inbound/journal.mjs');
+  const { eventOf, rotationOf, world, minutesAfter, T0 } = await import('./helpers/inbound-world.mjs');
+  const w = world({ rotation: rotationOf({ 'ae-round-robin': ['ana'] }) });
+  const posted = [];
+  let first = true;
+  const fake = async (url, options) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith('chat.postMessage')) {
+      const body = JSON.parse(options.body);
+      posted.push({ text: body.text, ts: `17.${posted.length + 1}` });
+      if (first) { first = false; return response(200, { ok: false, error: 'internal_error' }); }
+      return response(200, { ok: true, ts: posted.at(-1).ts });
+    }
+    if (path.endsWith('conversations.open')) return response(200, { ok: true, channel: { id: 'D1' } });
+    if (path.endsWith('conversations.history')) return response(200, { ok: true, messages: posted });
+    throw new Error(`unexpected ${url}`);
+  };
+  const slack = adapter(fake);
+  const go = (events, at) => tick({ events, rotation: w.rotation, journal: Journal.open(w.path), hubspot: w.hubspot, slack, now: () => at });
+  assert.equal((await go([eventOf(1)], T0)).outcomes[0].status, 'SLACK_UNCONFIRMED');
+  assert.equal((await go([], minutesAfter(1))).outcomes[0].status, 'ASSIGNED');
+  assert.equal(posted.length, 1, 'one message under the marker');
+});
