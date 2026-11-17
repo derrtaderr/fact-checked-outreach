@@ -180,12 +180,13 @@ test('live: owner written in HubSpot, rep told in Slack, and no token anywhere i
   const result = await cli(box, ['inbound', '--live'], { httpTransport: services.transport });
   assert.equal(result.code, 0, result.err);
   assert.match(result.out, /ASSIGNED\s+ana/);
-  assert.deepEqual(services.calls.map((c) => `${c.method} ${new URL(c.url).hostname}`), [
-    'GET api.hubapi.com', 'POST api.hubapi.com', 'POST slack.com',
+  assert.deepEqual(services.calls.map((c) => `${c.method} ${new URL(c.url).pathname}`), [
+    'POST /api/auth.test', 'GET /crm/v3/objects/contacts/dana%40acme.test', 'POST /crm/v3/objects/contacts', 'POST /api/chat.postMessage',
   ]);
   assert.equal(services.contacts.get('dana@acme.test').owner, '1001');
-  assert.equal(services.calls[0].auth, `Bearer ${HS_TOKEN}`);
-  assert.equal(services.calls[2].auth, `Bearer ${SL_TOKEN}`);
+  assert.equal(services.calls[1].auth, `Bearer ${HS_TOKEN}`);
+  assert.equal(services.calls[0].auth, `Bearer ${SL_TOKEN}`);
+  assert.equal(services.calls[3].auth, `Bearer ${SL_TOKEN}`);
 
   const everything = [result.out, result.err, ...walk(join(box.cwd, 'runs')).map((f) => readFileSync(f, 'utf8'))].join('\n');
   assert.ok(!everything.includes(HS_TOKEN), 'the HubSpot token is nowhere');
@@ -199,7 +200,9 @@ test('live: a HubSpot 401 that echoes the token is recorded with the token remov
   writeRotation(box, LIVE_ROTATION);
   box.env.SIGNAL_DESK_HUBSPOT_TOKEN = HS_TOKEN;
   box.env.SIGNAL_DESK_SLACK_TOKEN = SL_TOKEN;
-  const transport = async () => ({ status: 401, text: async () => JSON.stringify({ message: `bad token ${HS_TOKEN}` }) });
+  const transport = async (url) => (new URL(url).hostname === 'slack.com'
+    ? { status: 200, text: async () => JSON.stringify({ ok: true }) }
+    : { status: 401, text: async () => JSON.stringify({ message: `bad token ${HS_TOKEN}` }) });
   const result = await cli(box, ['inbound', '--live'], { httpTransport: transport });
   assert.match(result.out, /CRM_PENDING/);
   assert.match(result.out, /HUBSPOT_UNAUTHORIZED/);

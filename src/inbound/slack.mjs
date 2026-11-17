@@ -57,10 +57,23 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
     } catch {
       json = null;
     }
-    return { status: response.status, text, json };
+    const scopes = typeof response.headers?.get === 'function' ? response.headers.get('x-oauth-scopes') : null;
+    return { status: response.status, text, json, scopes };
   }
 
   return {
+    // The scopes the token holds. Slack returns them on every Web API response in the x-oauth-scopes
+    // header (https://docs.slack.dev/legacy/legacy-authentication/, read 2026-11-17); auth.test needs
+    // no scope and writes nothing. null when Slack did not send the header.
+    async scopes() {
+      const answer = await call('POST', `${SLACK_BASE}/auth.test`);
+      if (answer.json?.ok !== true) {
+        throw new InboundAdapterError('SLACK_REJECTED', `Slack refused the token at auth.test (${short(scrub(String(answer.json?.error ?? answer.status)))})`);
+      }
+      if (answer.scopes === null || answer.scopes === undefined) return null;
+      return String(answer.scopes).split(',').map((scope) => scope.trim()).filter(Boolean);
+    },
+
     async post({ channel, text, blocks }) {
       const answer = await call('POST', `${SLACK_BASE}/chat.postMessage`, { channel, text, blocks, unfurl_links: false, unfurl_media: false });
       if (answer.status === 429) {

@@ -82,7 +82,8 @@ test('when every rep has had the lead untouched, it parks for a human as NO_REP_
   assert.equal(outcome.status, 'NO_REP_RESPONDED');
   assert.match(outcome.detail, /ana, ben/);
   assert.equal(w.hubspot.contacts()[0].ownerId, 'o-ben', 'the last owner stays; nobody is left without one');
-  assert.deepEqual((await run(w, [], minutesAfter(500))).outcomes, []);
+  // Parked, it is listed again on every tick until a person acts (test/inbound-attention.test.mjs).
+  assert.deepEqual((await run(w, [], minutesAfter(500))).outcomes.map((o) => o.status), ['NO_REP_RESPONDED']);
 });
 
 test('the window restarts when the new rep is told, not when the lead first arrived', async () => {

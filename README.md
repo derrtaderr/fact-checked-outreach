@@ -711,7 +711,9 @@ written. HubSpot sets that date when a note, call, email, meeting or task is log
 So a rep who logs anything has touched it, and the clock stops. A person who changes the owner in
 HubSpot stops it too, and the tool never fights them. A rep who replies from their own inbox without
 logging it in HubSpot reads as untouched. When every rep in the pool has had the lead, it stays with
-the last one and parks as `NO_REP_RESPONDED` for a person to decide.
+the last one and parks as `NO_REP_RESPONDED` for a person to decide. A parked lead is read and
+listed again on every tick (and in `--plan`), and the tick exits 4, until a person gives it an owner,
+logs activity on it, or deletes the contact in HubSpot.
 
 ### Why a crash cannot skip a rep, assign twice or post twice
 
@@ -762,6 +764,24 @@ is and, on that tick, looks for every Slack post by its marker before making it,
 twice; a lead whose owner was in the lost lines and would now go to someone else meets that owner in
 HubSpot and parks as `ALREADY_OWNED`. `--recover` needs the Slack token's `im:history` scope, the same
 one every live tick needs. A trailing blank line left by an editor is not a mismatch.
+
+### Exit codes, for a scheduled run
+
+| Exit | Means |
+|---|---|
+| 0 | the tick ran and nothing needs a person |
+| 1 | the journal was refused (`JOURNAL_TAMPERED`, `JOURNAL_HEAD_MISMATCH`); nothing was called |
+| 2 | refused before the tick: a flag, a token, `SLACK_SCOPE_MISSING`, the rotation file, or no run; nothing was written |
+| 3 | `INBOUND_LOCKED`, another tick is running; nothing was written |
+| 4 | the tick ran, and at least one lead is `CRM_PENDING`, `SLACK_PENDING`, `SLACK_UNCONFIRMED`, `CLOCK_CHECK_FAILED`, `REFUSED` or `NO_REP_RESPONDED` |
+
+Alarm on any non-zero exit. Every state behind exit 4 stays until a person acts or a later tick
+succeeds, so a failing HubSpot token shows up on the next run, not weeks later.
+
+**The Slack token needs `im:history`,** as well as `chat:write` and `im:write`. Without it a post
+whose outcome is unknown can never be looked up, so the lead could never be confirmed. A live tick
+checks the token's scopes first (Slack's `auth.test`, which writes nothing) and refuses
+`SLACK_SCOPE_MISSING`, exit 2, before anything is written.
 
 ### One tick at a time
 

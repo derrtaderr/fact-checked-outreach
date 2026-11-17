@@ -111,7 +111,7 @@ line records the instant it was written (`at`). State is a pure fold of the jour
 | `slack_posted` | after Slack said ok | the rep was told; the clock starts |
 | `slack_failed` | after Slack answered `ok: false` | nothing was posted; safe to post again |
 | `touched` / `owner_changed` | at a clock check | the clock stops |
-| `exhausted` | at a clock check | every rep had a turn; parked for a human, `NO_REP_RESPONDED` |
+| `exhausted` | at a clock check | every rep had a turn; parked for a human, `NO_REP_RESPONDED`. Every later tick reads the contact and lists it again until a person gives it an owner, logs activity or deletes it (then `owner_changed` or `touched`) |
 | `released` | on resuming an attempt | the claimed rep is no longer in the lead's pool; the claim is let go with the reason, and the lead is claimed again from the rotation as it is now |
 
 What each crash point leaves, and what the next run does.
@@ -242,7 +242,12 @@ unambiguous refusal (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) the same way. Error
 
 Slack: `chat.postMessage` to the rep's user id (a DM from the app), and for `find`,
 `conversations.open` then `conversations.history`. Scopes needed: `chat:write`, `im:write`,
-`im:history`. No Slack webhook exists for this lane, so the live Slack adapter is tested against a
+`im:history`. A live tick checks them first with `auth.test`, which needs no scope and returns the
+token's scopes in the `x-oauth-scopes` header ("a `x-oauth-scopes` HTTP header will be returned with
+every response", https://docs.slack.dev/legacy/legacy-authentication/, read 2026-11-17). A missing
+one is refused `SLACK_SCOPE_MISSING`, exit 2, before the lock is taken or anything is written: without
+`im:history` a post whose outcome is unknown could never be looked up. If Slack sends no such
+header, the tick goes on and says the scopes were not checked. No Slack webhook exists for this lane, so the live Slack adapter is tested against a
 fake transport only and the live post is NOT RUN.
 
 ## Live mode and `--plan`
@@ -267,6 +272,20 @@ Nothing in this verb bills per use. HubSpot and Slack calls are rate-limited, no
 kernel's billing mark does not apply and none is added. The verb makes at most five HubSpot calls
 (a clock read, then read, create, read again and owner write) and three Slack calls (open, history,
 post) per lead per tick, and `--plan` prints the bound for the tick it previews.
+
+## Exit codes
+
+| Code | Means |
+|---|---|
+| 0 | the tick ran and nothing needs a person |
+| 1 | the journal was refused, `JOURNAL_TAMPERED` or `JOURNAL_HEAD_MISMATCH`; nothing was called |
+| 2 | refused before the tick: flags, tokens, `SLACK_SCOPE_MISSING`, the rotation file, no run; nothing written |
+| 3 | `INBOUND_LOCKED`; nothing written |
+| 4 | the tick ran and at least one lead is `CRM_PENDING`, `SLACK_PENDING`, `SLACK_UNCONFIRMED`, `CLOCK_CHECK_FAILED`, `REFUSED` or `NO_REP_RESPONDED` |
+
+Each state behind exit 4 stays as it is until a person acts or a later tick succeeds, so a scheduled
+run alarms on any non-zero exit. `ALREADY_OWNED`, `OWNER_CHANGED` and `TOUCHED` are a person's
+decision, and `REASSIGN_WAITING` leaves the lead with a rep, so none of them is exit 4.
 
 ## Escaping and secrets
 
