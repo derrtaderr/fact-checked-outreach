@@ -29,7 +29,8 @@ export class InboundLockedError extends Error {
     super(
       `${problem}: ${path}${holder ? ` (pid ${holder.pid} on ${holder.host}, started ${holder.started_at})` : ''}. ` +
         'Another inbound tick is using this state directory, so this one stopped before reading the journal. ' +
-        'Nothing was called and nothing was written. If no tick is running, see the README, "One tick at a time".',
+        'Nothing was written, and nothing was called except, on a live tick, the Slack scope check (auth.test, which writes nothing). ' +
+        'If no tick is running, see the README, "One tick at a time".',
     );
     this.name = 'InboundLockedError';
     this.code = 'INBOUND_LOCKED';
