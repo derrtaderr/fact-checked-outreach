@@ -2,7 +2,7 @@
 //
 //   inbound [--at <instant>] [--rotation <file>]     one tick on the fakes (fixture mode)
 //   inbound --live [--rotation <file>]                one tick against HubSpot and Slack
-//   inbound --live --plan [--rotation <file>]         every call a live tick would make; contacts nothing
+//   inbound --live --plan [--rotation <file>]         the calls a live tick would make, an upper bound; contacts nothing
 //
 // Reads the latest run's approved handoffs. This module never builds a network transport: src/cli.mjs
 // hands one in through `makeTransport`, so cli.mjs stays the only importer of node-transport.mjs.
