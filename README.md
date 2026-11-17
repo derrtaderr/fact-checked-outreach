@@ -740,9 +740,13 @@ gives the rep their turn back, and prints `ALREADY_OWNED` with the owner it foun
 `"overwrite_owner": true` in the rotation file only if you want the rotation to take those leads
 over. `--plan` prints this rule next to every write it would make.
 
-`inbound --live --plan` needs no token, contacts nothing and writes nothing. It prints every HubSpot
-and Slack call the tick would make, with method and URL, and for a lead past its window the read it
-would make and who would get the lead. Without either token, `--live` refuses
+`inbound --live --plan` needs no token, contacts nothing and writes nothing. It runs the tick itself
+against adapters that call nothing, so it lists the calls in the order the tick makes them, with
+method and URL, and for a lead past its window the read it would make and who would get the lead. A
+clock read's answer is only known to HubSpot, so the plan assumes the answer that makes the most
+calls (untouched, so reassigned) and its "At most N HTTP call(s)" is an upper bound, which it says;
+a lead it shows refused for want of a free rep is listed as one that may be assigned if an earlier
+answer frees one. Without either token, `--live` refuses
 (`INBOUND_HUBSPOT_TOKEN_MISSING`, `INBOUND_SLACK_TOKEN_MISSING`) before reading a file. Without a
 rotation file it refuses `ROTATION_CONFIG_MISSING`; live never falls back to the synthetic reps.
 `--at` is refused in live mode, which reads real time. Run `inbound --live` on a schedule (cron, a
@@ -799,7 +803,8 @@ against a fake transport only.
 - **A tighter rate limit.** Private apps on Free and Starter get 100 requests per 10 seconds and
   250,000 per day per account (Professional gets 190 and 625,000). The CRM search API has its own
   stricter limits and sends no rate-limit headers, so this reads and updates contacts by email
-  (`idProperty=email`) and never searches. A tick makes at most four HubSpot calls per lead.
+  (`idProperty=email`) and never searches. A tick makes at most five HubSpot calls per lead (a
+  clock read, then read, create, read again and owner write when it assigns).
   https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines.md
 - **Batch upsert by email cannot do a partial update**, which is why this updates one contact at a
   time. https://developers.hubspot.com/docs/api-reference/crm-contacts-v3/guide

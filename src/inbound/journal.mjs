@@ -56,11 +56,11 @@ export class JournalHeadMismatchError extends Error {
 
 export const headPathOf = (path) => `${path.replace(/\.jsonl$/, '')}.head`;
 
-function syncDir(dir) {
+function syncDir(dir, fsync) {
   try {
     const fd = openSync(dir, 'r');
     try {
-      fsyncSync(fd);
+      fsync(fd);
     } finally {
       closeSync(fd);
     }
@@ -69,25 +69,25 @@ function syncDir(dir) {
   }
 }
 
-function writeHead(path, entries) {
+function writeHead(path, entries, fsync = fsyncSync) {
   const head = headPathOf(path);
   const temp = `${head}.tmp`;
   const fd = openSync(temp, 'w');
   try {
     writeSync(fd, `${JSON.stringify({ lines: entries.length, hash: entries.length === 0 ? GENESIS_PREV : entries[entries.length - 1].hash })}\n`);
-    fsyncSync(fd);
+    fsync(fd);
   } finally {
     closeSync(fd);
   }
   renameSync(temp, head);
-  syncDir(dirname(path));
+  syncDir(dirname(path), fsync);
 }
 
-function appendDurably(target, text) {
+function appendDurably(target, text, fsync = fsyncSync) {
   const fd = openSync(target, 'a');
   try {
     writeSync(fd, text);
-    fsyncSync(fd);
+    fsync(fd);
   } finally {
     closeSync(fd);
   }
@@ -162,7 +162,7 @@ function load(path, { readOnly = false } = {}) {
   return { entries, repaired };
 }
 
-function verified(path, { readOnly = false, accept = false } = {}) {
+function verified(path, { readOnly = false, accept = false, fsync = fsyncSync } = {}) {
   const { entries, repaired } = load(path, { readOnly });
   const problem = headProblem(path, entries);
   let recovered = null;
@@ -175,7 +175,7 @@ function verified(path, { readOnly = false, accept = false } = {}) {
   if (!readOnly && entries.length > 0) {
     const head = readHead(path);
     const last = entries[entries.length - 1].hash;
-    if (head === null || head.lines !== entries.length || head.hash !== last) writeHead(path, entries);
+    if (head === null || head.lines !== entries.length || head.hash !== last) writeHead(path, entries, fsync);
   }
   return { entries, repaired, recovered };
 }
@@ -193,28 +193,39 @@ export class Journal {
 
   #readOnly;
 
-  constructor(path, entries, repaired, appendLine, recovered = null, readOnly = false) {
+  #fsync;
+
+  constructor(path, entries, repaired, appendLine, recovered = null, readOnly = false, fsync = fsyncSync) {
     this.#path = path;
     this.#entries = entries;
     this.repaired = repaired;
     this.recovered = recovered;
     this.#appendLine = appendLine;
     this.#readOnly = readOnly;
+    this.#fsync = fsync;
   }
 
   /**
    * Opens (and, on the first append, creates) the journal at path. `appendLine` is injectable so a
    * test can make a write fail at an exact point, which is how the crash tests simulate a crash.
    */
-  static open(path, { appendLine = appendDurably, readOnly = false, accept = false } = {}) {
+  static open(path, { appendLine, readOnly = false, accept = false, fsync = fsyncSync } = {}) {
     // readOnly: for --plan, which must write nothing, so a torn tail is reported and left in place.
     // accept: --recover, which takes a journal that disagrees with its head as it is.
-    const { entries, repaired, recovered } = verified(path, { readOnly, accept });
-    return new Journal(path, entries, repaired, appendLine, recovered, readOnly);
+    // fsync: injectable like appendLine, so a test that appends thousands of lines need not wait on
+    // the disk for each; every caller in src/ leaves it as fsyncSync.
+    const { entries, repaired, recovered } = verified(path, { readOnly, accept, fsync });
+    const append = appendLine ?? ((target, text) => appendDurably(target, text, fsync));
+    return new Journal(path, entries, repaired, append, recovered, readOnly, fsync);
   }
 
   entries() {
     return [...this.#entries];
+  }
+
+  /** An in-memory copy that appends to nothing on disk, for --plan, which runs the tick on it. */
+  scratch() {
+    return new Journal(this.#path, [...this.#entries], this.repaired, () => {}, this.recovered, true);
   }
 
   head() {
@@ -230,7 +241,7 @@ export class Journal {
     this.#entries.push(written);
     // After the line is durable. A crash before this leaves the journal one line ahead of the head,
     // which load accepts; the head is never ahead of the journal.
-    if (!this.#readOnly) writeHead(this.#path, this.#entries);
+    if (!this.#readOnly) writeHead(this.#path, this.#entries, this.#fsync);
     return written;
   }
 }

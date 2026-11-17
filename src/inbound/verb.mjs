@@ -18,10 +18,11 @@ import { fileURLToPath } from 'node:url';
 import { parseLedger } from '../ledger.mjs';
 import { printable, maskUrl } from '../terminal.mjs';
 import { secretScrubber } from '../live/keys.mjs';
-import { parseRotationConfig, pickRep, RotationConfigError } from './rotation.mjs';
+import { parseRotationConfig, RotationConfigError } from './rotation.mjs';
 import { Journal, JournalTamperedError, JournalHeadMismatchError } from './journal.mjs';
 import { acquireLock, InboundLockedError } from './lock.mjs';
-import { tick, fold, openCounts } from './engine.mjs';
+import { tick, fold } from './engine.mjs';
+import { planCalls, HTTP_CALLS } from './plan.mjs';
 import { fakeHubSpot, fakeSlack } from './fakes.mjs';
 import { createHubSpotAdapter, hubspotPaths, HUBSPOT_BASE } from './hubspot.mjs';
 import { createSlackAdapter, SLACK_BASE } from './slack.mjs';
@@ -208,7 +209,7 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
       err(`${error.code}: ${error.message}`);
       return 1;
     }
-    return planTick({ out, rotation, journal, events, refused, at: now(), runId, journalPath: show(journalPath) });
+    return planTick({ out, rotation, journal, events, refused, at: now(), runId, journalPath: show(journalPath), recover });
   }
 
   // One tick at a time per state directory, held from before the journal is read until after the last
@@ -292,83 +293,86 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
 }
 
 // --- --plan ---------------------------------------------------------------------------------------
+//
+// The plan is the engine's own tick on an in-memory copy of the journal (src/inbound/plan.mjs), so the
+// calls it lists are made in the tick's order, against the tick's capacity, and cannot drift from it.
 
-function planTick({ out, rotation, journal, events, refused, at, runId, journalPath }) {
-  const state = fold(journal.entries());
-  const pointers = { ...state.pointers };
-  const open = openCounts(state);
+async function planTick({ out, rotation, journal, events, refused, at, runId, journalPath, recover }) {
+  const before = fold(journal.entries());
+  const { calls, possible, outcomes } = await planCalls({ events, rotation, journal, at, uncertain: recover });
   const url = (path) => printable(maskUrl(`${HUBSPOT_BASE}${path}`), { max: Infinity });
-  const assignCalls = (email, rep, indent) => {
-    out(`${indent}GET ${url(hubspotPaths.read(email))}  (read the owner first)`);
+  const assignLines = (op, indent) => {
+    out(`${indent}GET ${url(hubspotPaths.read(op.email))}  (read the owner first)`);
     out(`${indent}  on 404, POST ${url(hubspotPaths.create())}; on 409, GET again`);
     out(`${indent}  if it has an owner this tool did not write: no write, ALREADY_OWNED, nobody told (unless "overwrite_owner": true)`);
-    out(`${indent}  otherwise PATCH ${url(hubspotPaths.update(email))}  (owner ${shown(rep.hubspot_owner_id)})`);
-    out(`${indent}POST ${SLACK_BASE}/chat.postMessage to ${shown(rep.slack_user_id)}`);
+    out(`${indent}  otherwise PATCH ${url(hubspotPaths.update(op.email))}  (owner ${shown(op.ownerId)})`);
+  };
+  const opLines = (ops, indent) => {
+    let found = false;
+    for (const op of ops) {
+      if (op.op === 'assign') assignLines(op, indent);
+      if (op.op === 'find') {
+        out(`${indent}POST ${SLACK_BASE}/conversations.open and GET ${SLACK_BASE}/conversations.history, to look for the earlier post`);
+        found = true;
+      }
+      if (op.op === 'post') out(`${indent}POST ${SLACK_BASE}/chat.postMessage to ${shown(op.channel)}${found ? ', only if the earlier post is not found' : ''}`);
+    }
   };
 
   out(`plan for inbound --live at ${at}, run ${runId}`);
   out(`  journal   ${journalPath} (${journal.entries().length} line(s))${journal.repaired ? `; on a real tick: ${journal.repaired}` : ''}`);
+  if (journal.recovered) out(`  recover   ${journal.recovered}`);
   out('');
 
-  let calls = 0;
-  for (const lead of state.leads.values()) {
-    const attempt = lead.attempts[lead.attempts.length - 1];
-    const label = `  ${shown(lead.key)} (${shown(lead.lead_id)})`;
-    if (lead.stopped !== null) continue;
-    if (attempt.crm === null || attempt.slack === null) {
-      out(`${label} has an interrupted attempt for ${shown(attempt.rep_id)}; would finish it:`);
-      const rep = { hubspot_owner_id: attempt.owner_id, slack_user_id: attempt.slack_user_id };
-      if (attempt.crm === null) { assignCalls(lead.brief.to, rep, '    '); calls += 4; }
-      else {
-        if (attempt.slack_open) out(`    POST ${SLACK_BASE}/conversations.open and GET ${SLACK_BASE}/conversations.history, to look for the earlier post`);
-        out(`    POST ${SLACK_BASE}/chat.postMessage to ${shown(attempt.slack_user_id)}, only if the earlier post is not found`);
-        calls += 3;
+  for (const outcome of outcomes) {
+    const label = `  ${shown(outcome.key)} (${shown(outcome.lead_id ?? '-')})`;
+    const ops = calls.filter((op) => op.key === outcome.key);
+    const read = ops.findIndex((op) => op.op === 'read');
+    const known = before.leads.get(outcome.key);
+    if (read !== -1) {
+      const holder = known.attempts[known.attempts.length - 1].rep_id;
+      out(`${label} is past its window with ${shown(holder)}; would read it:`);
+      out(`    GET ${url(hubspotPaths.read(ops[read].email))}`);
+      out('    if the owner changed or activity was logged, would stop the clock and call nothing else');
+      const rest = ops.slice(read + 1);
+      if (outcome.status === 'REASSIGNED') {
+        out(`    if untouched, would reassign to ${shown(outcome.rep)}:`);
+        opLines(rest, '      ');
+      } else {
+        out(`    if untouched: ${outcome.status}${outcome.code ? ` ${outcome.code}` : ''}, ${printable(outcome.detail ?? '', { max: Infinity })}`);
+        opLines(rest, '      ');
       }
       continue;
     }
-    const deadline = Date.parse(attempt.slack.at) + rotation.response_minutes * 60000;
-    if (Date.parse(at) < deadline) {
-      out(`${label} is with ${shown(attempt.rep_id)}; clock running, no call`);
+    if (outcome.status === 'CLOCK_RUNNING') {
+      out(`${label} is with ${shown(outcome.rep)}; clock running, no call`);
       continue;
     }
-    out(`${label} is past its window with ${shown(attempt.rep_id)}; would read it:`);
-    out(`    GET ${url(hubspotPaths.read(lead.brief.to))}`);
-    out('    if the owner changed or activity was logged, would stop the clock and call nothing else');
-    const pick = pickRep({ rotation, pool: lead.pool, last: pointers[lead.pool], open, exclude: lead.attempts.map((a) => a.rep_id) });
-    if (pick.rep === undefined) {
-      out(`    if untouched, would reassign to nobody: ${printable(pick.detail, { max: Infinity })}`);
-      calls += 1;
+    if (ops.length > 0 && (outcome.status === 'ASSIGNED' || outcome.status === 'REASSIGNED')) {
+      const resumed = known !== undefined && known.attempts[known.attempts.length - 1].rep_id === outcome.rep;
+      out(resumed
+        ? `${label} has an interrupted attempt for ${shown(outcome.rep)}; would finish it:`
+        : `${label} is new and would go to ${shown(outcome.rep)}:`);
+      opLines(ops, '    ');
       continue;
     }
-    out(`    if untouched, would reassign to ${shown(pick.rep.id)}:`);
-    assignCalls(lead.brief.to, pick.rep, '      ');
-    pointers[lead.pool] = pick.rep.id;
-    calls += 5;
-  }
-
-  const sorted = [...events].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  for (const { key, lead } of sorted) {
-    if (state.leads.has(key)) continue;
-    const label = `  ${shown(key)} (${shown(lead.lead_id)})`;
-    if ([...state.leads.values()].some((other) => other.lead_id === lead.lead_id)) {
-      out(`${label} would be skipped: LEAD_ALREADY_ASSIGNED`);
-      continue;
-    }
-    const pick = pickRep({ rotation, pool: lead.pool, last: pointers[lead.pool], open });
-    if (pick.rep === undefined) {
-      out(`${label} would be refused: ${pick.code}, ${printable(pick.detail, { max: Infinity })}`);
-      continue;
-    }
-    out(`${label} is new and would go to ${shown(pick.rep.id)}:`);
-    assignCalls(lead.to, pick.rep, '    ');
-    pointers[lead.pool] = pick.rep.id;
-    open[pick.rep.id] = (open[pick.rep.id] ?? 0) + 1;
-    calls += 4;
+    out(`${label} would be ${outcome.status}${outcome.code ? `: ${outcome.code}` : ''}, ${printable(outcome.detail ?? '', { max: Infinity })}`);
+    opLines(ops, '    ');
   }
   for (const r of refused) out(`  ${shown(r.key)} would be refused: ${r.code}`);
+  for (const key of [...new Set(possible.map((op) => op.key))]) {
+    out(`  ${shown(key)} was refused NO_ELIGIBLE_REP above; if an answer above frees a rep (a lead found touched, or one a person owns), it may be assigned after all: up to ${HTTP_CALLS.assign} HubSpot calls and ${HTTP_CALLS.post} Slack post`);
+  }
 
+  const assumed = calls.reduce((sum, op) => sum + HTTP_CALLS[op.op], 0);
+  const extra = possible.reduce((sum, op) => sum + HTTP_CALLS[op.op], 0);
   out('');
-  out(`  At most ${calls} call(s) in all. HubSpot and Slack calls are rate-limited, not billed per call.`);
+  out(`  At most ${assumed + extra} HTTP call(s) in all${extra > 0 ? ` (${assumed} as planned, ${extra} more only if a rep is freed)` : ''}. HubSpot and Slack calls are rate-limited, not billed per call.`);
+  if (calls.some((op) => op.op === 'read')) {
+    out('  Each clock read depends on what HubSpot answers. This plan assumes every lead past its window is untouched,');
+    out('  the answer that makes the most calls; a touched lead, or an owner a person set, stops that lead with no further call.');
+  }
+  out('  Each assignment counts its most HubSpot requests (read, create, read again, owner write); usually it takes two.');
   out('  Nothing was contacted and nothing was written. No token was needed to plan.');
   return 0;
 }
