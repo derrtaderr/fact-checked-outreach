@@ -12,6 +12,7 @@
 
 import { pickRep } from './rotation.mjs';
 import { buildSlackMessage, markerFor } from './message.mjs';
+import { InboundAdapterError } from './errors.mjs';
 
 // --- the fold -------------------------------------------------------------------------------------
 
@@ -191,7 +192,9 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       posted = await slack.post(message);
     } catch (error) {
       const code = error?.code ?? 'SLACK_UNREACHABLE';
-      if (error?.ambiguous) {
+      // Only a named refusal that proves nothing was posted may be retried by posting. Anything else,
+      // including an error the adapter did not name, may have landed and goes through find first.
+      if (!(error instanceof InboundAdapterError) || error.ambiguous) {
         return {
           status: 'SLACK_UNCONFIRMED',
           code,

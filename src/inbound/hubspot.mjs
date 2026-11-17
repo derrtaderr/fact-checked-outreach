@@ -50,8 +50,11 @@ export function createHubSpotAdapter({ transport, token, scrub = (text) => text,
     throw new TypeError('createHubSpotAdapter requires a token');
   }
 
+  // Every await after the request left sits inside the try, so a body that cannot be read is a named,
+  // ambiguous failure (the write may have landed), never a raw error.
   async function call(method, path, body) {
     let response;
+    let text;
     try {
       response = await transport(`${HUBSPOT_BASE}${path}`, {
         method,
@@ -60,10 +63,11 @@ export function createHubSpotAdapter({ transport, token, scrub = (text) => text,
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
       });
+      text = await response.text();
     } catch (error) {
-      throw new InboundAdapterError('HUBSPOT_UNAVAILABLE', `HubSpot could not be reached: ${short(scrub(String(error?.message ?? error)))}`, { ambiguous: true });
+      const stage = response === undefined ? 'could not be reached' : `answered ${response.status} but the answer could not be read`;
+      throw new InboundAdapterError('HUBSPOT_UNAVAILABLE', `HubSpot ${stage}: ${short(scrub(String(error?.message ?? error)))}`, { ambiguous: true });
     }
-    const text = await response.text();
     return { status: response.status, text, json: parse(text) };
   }
 
