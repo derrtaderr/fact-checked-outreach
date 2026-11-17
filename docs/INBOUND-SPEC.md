@@ -112,6 +112,7 @@ line records the instant it was written (`at`). State is a pure fold of the jour
 | `slack_failed` | after Slack answered `ok: false` | nothing was posted; safe to post again |
 | `touched` / `owner_changed` | at a clock check | the clock stops |
 | `exhausted` | at a clock check | every rep had a turn; parked for a human, `NO_REP_RESPONDED` |
+| `released` | on resuming an attempt | the claimed rep is no longer in the lead's pool; the claim is let go with the reason, and the lead is claimed again from the rotation as it is now |
 
 What each crash point leaves, and what the next run does.
 
@@ -119,7 +120,12 @@ What each crash point leaves, and what the next run does.
   and gets the same rep, because the pointer did not move. A torn final line (a crash mid-write) is
   removed on load and reported, because the call it announced had not started.
 - **After `claim`, before HubSpot answered.** The claim names the rep. The next run re-does the
-  write for that same rep, never re-picks, so no rep is skipped and none gets two turns. The write is
+  write for that same rep, never re-picks, so no rep is skipped and none gets two turns. It reads
+  that rep's `hubspot_owner_id` and `slack_user_id` from the rotation file as it is at that run, not
+  as they were at the claim, so correcting a typo in the file heals the retry; the ids actually used
+  are journaled on `crm_written` and `slack_attempt`, and the clock compares HubSpot with the owner
+  written. If the rep has left the pool, the claim is `released` with the reason and the lead is
+  claimed again from the current rotation (or waits, `REASSIGN_WAITING`, if nobody can take it). The write is
   idempotent: update the contact by email (`PATCH .../contacts/{email}?idProperty=email`); on 404
   create it; on 409 (created by the attempt that crashed) update again. There is never a second
   contact.
@@ -133,7 +139,9 @@ What each crash point leaves, and what the next run does.
   Slack for a message carrying that marker. Found means record it, not found means post. If Slack
   cannot be asked, the lead parks as `SLACK_UNCONFIRMED` and nothing is posted, because guessing
   either way is either a double post or a rep never told. It never posts twice.
-- **HubSpot refuses or is down.** `crm_failed`, no Slack post, reported as `CRM_PENDING`, retried on
+- **HubSpot refuses or is down.** `crm_failed`, no Slack post, reported as `CRM_PENDING` (and for a
+  refusal that repeats until a person acts, `HUBSPOT_INVALID_OWNER` or a token problem, the output
+  names what to fix rather than promising the retry works), retried on
   the next run for the same rep. The order HubSpot first, then Slack, is what makes "the rep was told
   about a lead they do not own" impossible.
 

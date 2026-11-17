@@ -40,7 +40,9 @@ export function fold(entries) {
         crm_failure: null,
         slack: null,
         slack_open: false,
+        slack_channel: null,
         slack_failure: null,
+        released: null,
       });
       continue;
     }
@@ -49,7 +51,9 @@ export function fold(entries) {
     const attempt = lead.attempts.find((a) => a.attempt === entry.attempt);
     switch (entry.type) {
       case 'crm_written':
-        attempt.crm = { at: entry.at, contact_id: entry.contact_id };
+        // owner_id: the owner actually written, which is what the clock compares HubSpot against. It
+        // can differ from the claim's when the rotation file was corrected between a failure and the retry.
+        attempt.crm = { at: entry.at, contact_id: entry.contact_id, owner_id: entry.owner_id ?? attempt.owner_id };
         attempt.crm_failure = null;
         break;
       case 'crm_failed':
@@ -58,6 +62,7 @@ export function fold(entries) {
       case 'slack_attempt':
         attempt.slack_open = true;
         attempt.slack_attempt_at = entry.at;
+        attempt.slack_channel = entry.channel ?? attempt.slack_user_id;
         break;
       case 'slack_posted':
         attempt.slack = { at: entry.at, ts: entry.ts };
@@ -67,6 +72,9 @@ export function fold(entries) {
       case 'slack_failed':
         attempt.slack_open = false;
         attempt.slack_failure = { code: entry.code, detail: entry.detail };
+        break;
+      case 'released':
+        attempt.released = { at: entry.at, reason: entry.reason };
         break;
       case 'touched':
       case 'owner_changed':
@@ -87,7 +95,7 @@ const latest = (lead) => lead.attempts[lead.attempts.length - 1];
 export function openCounts(state) {
   const open = {};
   for (const lead of state.leads.values()) {
-    if (lead.stopped !== null) continue;
+    if (lead.stopped !== null || latest(lead).released !== null) continue;
     const rep = latest(lead).rep_id;
     open[rep] = (open[rep] ?? 0) + 1;
   }
@@ -120,12 +128,59 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
   // Appends an intent or result line for one lead's attempt.
   const write = (record) => journal.append({ ...record, at: now() });
 
-  // Finishes the latest attempt of a lead in the journal: HubSpot first, then Slack.
+  // What a failure means for the next run, by code: some clear on their own, others repeat until a
+  // person fixes the rotation file or the token, and the output must say which.
+  function nextStep(code, rep) {
+    switch (code) {
+      case 'HUBSPOT_INVALID_OWNER':
+        return `this repeats until hubspot_owner_id for ${rep} is corrected in the rotation file; each run reads the file again`;
+      case 'HUBSPOT_UNAUTHORIZED':
+      case 'HUBSPOT_SCOPE_MISSING':
+        return 'this repeats until the HubSpot token or its scopes are fixed';
+      case 'SLACK_REJECTED':
+        return `if Slack named the channel or user, this repeats until slack_user_id for ${rep} is corrected in the rotation file (each run reads it again) or the bot token is fixed`;
+      default:
+        return null;
+    }
+  }
+
+  // A claim whose rep is no longer in the lead's pool is released, with the reason journaled, and the
+  // lead is assigned again from the rotation as it is now. The released rep never had a working turn,
+  // so the next rep's message is a plain assignment, not "reassigned because untouched".
+  async function reclaim(key, why) {
+    const lead = state().leads.get(key);
+    const attempt = latest(lead);
+    const tried = lead.attempts.filter((a) => a.released === null).map((a) => a.rep_id);
+    const known = state();
+    const pick = pickRep({ rotation, pool: lead.pool, last: known.pointers[lead.pool], open: openCounts(known), exclude: tried });
+    if (pick.rep === undefined) {
+      return {
+        status: 'REASSIGN_WAITING',
+        code: pick.code,
+        detail: `${why}. Nobody can take it yet: ${pick.detail}. The next run tries again`,
+      };
+    }
+    claim(lead, pick, attempt.attempt + 1);
+    const outcome = await complete(key);
+    return { ...outcome, detail: `${outcome.detail}. ${why}` };
+  }
+
+  // Finishes the latest attempt of a lead in the journal: HubSpot first, then Slack. The rep's ids
+  // are read from the rotation as it is NOW, not frozen from the claim, so a corrected file heals a
+  // retry. The ids actually used are journaled on the result lines.
   async function complete(key) {
     const lead = state().leads.get(key);
     const attempt = latest(lead);
-    const rep = { id: attempt.rep_id, slack_user_id: attempt.slack_user_id };
-    const label = attempt.attempt === 0 ? 'ASSIGNED' : 'REASSIGNED';
+    if (attempt.released !== null) return reclaim(key, attempt.released.reason);
+
+    const now_ = (rotation.pools[lead.pool] ?? []).find((r) => r.id === attempt.rep_id);
+    if (now_ === undefined) {
+      const reason = `${attempt.rep_id} was claimed for this lead but is no longer in the "${lead.pool}" rotation, so the claim was released`;
+      write({ type: 'released', key, attempt: attempt.attempt, reason });
+      return reclaim(key, reason);
+    }
+    const rep = { id: attempt.rep_id, slack_user_id: now_.slack_user_id };
+    const label = attempt.reassigned ? 'REASSIGNED' : 'ASSIGNED';
 
     if (attempt.crm === null) {
       // The journal write sits OUTSIDE the try. A crash while recording the result is a crash, not a
@@ -134,21 +189,22 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       try {
         written = await hubspot.assign({
           email: lead.brief.to,
-          ownerId: attempt.owner_id,
+          ownerId: now_.hubspot_owner_id,
           properties: { company: lead.brief.company },
         });
       } catch (error) {
         const code = error?.code ?? 'HUBSPOT_UNAVAILABLE';
         const detail = scrubbed(scrub, error);
         write({ type: 'crm_failed', key, attempt: attempt.attempt, code, detail });
+        const blocked = nextStep(code, rep.id);
         return {
           status: 'CRM_PENDING',
           code,
           rep: rep.id,
-          detail: `HubSpot did not take the owner (${detail}). ${rep.id} keeps this turn; the next run writes the owner again and only then tells them`,
+          detail: `HubSpot did not take the owner (${detail}). ${rep.id} keeps this turn and is not told until the owner is written; ${blocked ?? 'the next run writes the owner again'}`,
         };
       }
-      write({ type: 'crm_written', key, attempt: attempt.attempt, contact_id: written.contactId, owner_id: attempt.owner_id });
+      write({ type: 'crm_written', key, attempt: attempt.attempt, contact_id: written.contactId, owner_id: now_.hubspot_owner_id });
     }
 
     const current = latest(state().leads.get(key));
@@ -167,7 +223,8 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
     if (current.slack_open) {
       let found;
       try {
-        found = await slack.find({ channel: message.channel, marker: message.marker, oldest: current.slack_attempt_at });
+        // Searched where the earlier post went, which the slack_attempt line recorded.
+        found = await slack.find({ channel: current.slack_channel, marker: message.marker, oldest: current.slack_attempt_at });
       } catch (error) {
         return {
           status: 'SLACK_UNCONFIRMED',
@@ -184,7 +241,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       }
     }
 
-    write({ type: 'slack_attempt', key, attempt: attempt.attempt, marker: message.marker });
+    write({ type: 'slack_attempt', key, attempt: attempt.attempt, marker: message.marker, channel: message.channel });
     // As above: a crash while recording a post that landed must stay a crash. Caught here, it would be
     // journaled as slack_failed and the next run would post a second time.
     let posted;
@@ -203,11 +260,12 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
         };
       }
       write({ type: 'slack_failed', key, attempt: attempt.attempt, code, detail: scrubbed(scrub, error) });
+      const blocked = nextStep(code, rep.id);
       return {
         status: 'SLACK_PENDING',
         code,
         rep: rep.id,
-        detail: `the owner is written; Slack refused the post (${scrubbed(scrub, error)}). The next run posts it`,
+        detail: `the owner is written; Slack refused the post (${scrubbed(scrub, error)}). ${blocked === null ? 'The next run posts it' : `The next run posts it again; ${blocked}`}`,
       };
     }
     write({ type: 'slack_posted', key, attempt: attempt.attempt, ts: posted.ts });
@@ -232,7 +290,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
   // 1. Finish what was interrupted.
   for (const lead of state().leads.values()) {
     const attempt = latest(lead);
-    if (lead.stopped === null && (attempt.crm === null || attempt.slack === null)) {
+    if (lead.stopped === null && (attempt.released !== null || attempt.crm === null || attempt.slack === null)) {
       say(lead.key, lead.lead_id, await complete(lead.key));
     }
   }
@@ -300,10 +358,11 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       };
     }
 
-    if (seen === null || seen.ownerId !== attempt.owner_id) {
+    const written = attempt.crm.owner_id;
+    if (seen === null || seen.ownerId !== written) {
       const detail = seen === null
         ? 'the contact is no longer in HubSpot, so a person removed it; the clock stopped'
-        : `the owner in HubSpot is now ${seen.ownerId}, not ${attempt.owner_id} as written for ${attempt.rep_id}; a person reassigned it, so the clock stopped and nothing was changed`;
+        : `the owner in HubSpot is now ${seen.ownerId}, not ${written} as written for ${attempt.rep_id}; a person reassigned it, so the clock stopped and nothing was changed`;
       write({ type: 'owner_changed', key, attempt: attempt.attempt, owner_seen: seen?.ownerId ?? null, detail });
       return { status: 'OWNER_CHANGED', rep: attempt.rep_id, detail };
     }
@@ -314,7 +373,7 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       return { status: 'TOUCHED', rep: attempt.rep_id, detail };
     }
 
-    const tried = lead.attempts.map((a) => a.rep_id);
+    const tried = lead.attempts.filter((a) => a.released === null).map((a) => a.rep_id);
     const known = state();
     const pick = pickRep({ rotation, pool: lead.pool, last: known.pointers[lead.pool], open: openCounts(known), exclude: tried });
     if (pick.rep === undefined) {
