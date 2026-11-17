@@ -124,3 +124,80 @@ test('X1: a payload of templated sources plans exactly the fetches the run makes
   for (const url of gets) assert.ok(plan.stdout.includes(url), `the plan prints ${url}`);
   assert.match(plan.stdout, /x1-1, 6 evidence URL\(s\)/);
 });
+
+// --- 2. a mix of source shapes: the plan is never lower than the run ---------------------------
+
+// A small seeded generator, so a failure names a trial that reproduces.
+function rng(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+const DOMAINS = [
+  (n) => `co${n}.example.com`,
+  (n) => `https://co${n}.example.com`,
+  (n) => `http://co${n}.example.com`,
+  // ingest trims and lowercases, so this expands to https even though it does not start with it
+  (n) => `  HTTPS://Co${n}.Example.com  `,
+];
+
+const STRING_SOURCES = [
+  'https://lit.example.com/a', // literal https
+  'http://lit.example.com/a', // literal http
+  'https://dir.example.com/{domain}', // literal https with a template inside
+  '{domain}/about', // https only when the domain is
+  'HTTPS://up.example.com/{email}', // upper-case scheme
+  '{email}', // never https
+  'not a url',
+  '',
+];
+const MALFORMED_SOURCES = [12345, null, { a: 1 }, ['https://nested.example.com']];
+const IDENTITIES = [undefined, '{domain}/people/{email}', 'https://people.example.com/{email}', 'http://people.example.com/{email}', '   ', 42];
+
+function pick(random, list) {
+  return list[Math.floor(random() * list.length)];
+}
+
+test('X1: over a mix of source shapes the plan never counts fewer fetches than the run makes, and equal ones when every source is a string', async () => {
+  let totalReal = 0;
+  let malformedTrials = 0;
+  for (let trial = 1; trial <= 24; trial += 1) {
+    const random = rng(trial * 7919);
+    const malformedAllowed = trial % 2 === 0;
+    const signals = tmp(`x1-mix-${trial}`);
+    const leads = 1 + Math.floor(random() * 4);
+    let malformed = false;
+    for (let n = 1; n <= leads; n += 1) {
+      const sources = Array.from({ length: 1 + Math.floor(random() * 5) }, () => {
+        if (malformedAllowed && random() < 0.25) {
+          malformed = true;
+          return pick(random, MALFORMED_SOURCES);
+        }
+        return pick(random, STRING_SOURCES);
+      });
+      writeSigned(signals, `000${n}`, body({
+        id: `x1-mix-${trial}-${n}`,
+        domain: pick(random, DOMAINS)(n),
+        email: `pat${n}@co${n}.example.com`,
+        sources,
+        identity_source: pick(random, IDENTITIES),
+      }));
+    }
+
+    const { plan, gets } = await planAndRun(signals);
+    const planned = plannedFetches(plan.stdout);
+    const real = gets.filter((url) => /^https:\/\//i.test(url)).length;
+    assert.equal(real, gets.length, `trial ${trial}: the live fetcher sent only https`);
+    assert.ok(planned >= real, `trial ${trial}: plan ${planned} is not lower than the run's ${real}`);
+    if (!malformed) assert.equal(planned, real, `trial ${trial}: every source is a string, so the run is deterministic`);
+    for (const url of new Set(gets)) assert.ok(plan.stdout.includes(url), `trial ${trial}: the plan prints ${url}`);
+    totalReal += real;
+    if (malformed) malformedTrials += 1;
+  }
+  // Not vacuous: the trials made real requests, and some of them carried malformed sources.
+  assert.ok(totalReal > 20, `the trials made ${totalReal} real requests`);
+  assert.ok(malformedTrials > 0, 'some trials carried a malformed source');
+});
