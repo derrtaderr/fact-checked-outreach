@@ -129,7 +129,7 @@ const scrubbed = (scrub, error) => scrub(String(error?.message ?? error));
  *
  * Returns { at, outcomes: [{ key, lead_id, status, code?, detail, rep? }], repaired }.
  */
-export async function tick({ events, rotation, journal, hubspot, slack, now, scrub = (text) => text }) {
+export async function tick({ events, rotation, journal, hubspot, slack, now, scrub = (text) => text, uncertain = false }) {
   const at = now();
   const state = () => fold(journal.entries());
   const outcomes = new Map();
@@ -240,12 +240,13 @@ export async function tick({ events, rotation, journal, hubspot, slack, now, scr
       reassigned: attempt.reassigned ?? undefined,
     });
 
-    // A post that may exist: ask Slack before posting again.
-    if (current.slack_open) {
+    // A post that may exist: ask Slack before posting again. `uncertain` (inbound --recover, after the
+    // journal lost lines) treats EVERY post this tick as one that may exist.
+    if (current.slack_open || uncertain) {
       let found;
       try {
         // Searched where the earlier post went, which the slack_attempt line recorded.
-        found = await slack.find({ channel: current.slack_channel, marker: message.marker, oldest: current.slack_attempt_at });
+        found = await slack.find({ channel: current.slack_channel ?? message.channel, marker: message.marker, oldest: current.slack_attempt_at ?? null });
       } catch (error) {
         return {
           status: 'SLACK_UNCONFIRMED',

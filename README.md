@@ -748,6 +748,17 @@ rotation file it refuses `ROTATION_CONFIG_MISSING`; live never falls back to the
 `--at` is refused in live mode, which reads real time. Run `inbound --live` on a schedule (cron, a
 launchd job) to move the clock; each run is one tick.
 
+### If the journal was cut short
+
+Next to the journal sits `journal.head`, the number of lines and the last hash, written after every
+append. A journal that has lost lines from its end (a restore from an older backup, a disk problem,
+a hand edit) no longer matches it, and `inbound` refuses `JOURNAL_HEAD_MISMATCH`, exit 1, calling
+nothing. If you know why, run the same command again with `--recover`. It accepts the journal as it
+is and, on that tick, looks for every Slack post by its marker before making it, so no rep is told
+twice; a lead whose owner was in the lost lines and would now go to someone else meets that owner in
+HubSpot and parks as `ALREADY_OWNED`. `--recover` needs the Slack token's `im:history` scope, the same
+one every live tick needs. A trailing blank line left by an editor is not a mismatch.
+
 ### One tick at a time
 
 A tick holds an exclusive lock on its state directory (`runs/inbound/lock`, or

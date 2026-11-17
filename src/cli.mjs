@@ -86,7 +86,7 @@ one dash or a typographic dash (-plan, —plan) is refused, and so is any word a
   approve   --by <name>, --note <text>
   reject    --by <name>, --note <text>
   dlq       --replay, --max-leads <n>
-  inbound   --live, --plan, --rotation <file>, --at <instant>
+  inbound   --live, --plan, --rotation <file>, --at <instant>, --recover
 
 There is no install step, so the invocation is spelled out in full. A bare signal-desk is
 not on PATH in a fresh clone.
@@ -1102,7 +1102,7 @@ const ACCEPTED_FLAGS = Object.freeze({
   replay: [],
   dashboard: [],
   dlq: ['--replay', '--max-leads'],
-  inbound: ['--live', '--plan', '--rotation', '--at'],
+  inbound: ['--live', '--plan', '--rotation', '--at', '--recover'],
 });
 
 // Flags that take a value, so the value is not mistaken for a flag or for a positional argument.

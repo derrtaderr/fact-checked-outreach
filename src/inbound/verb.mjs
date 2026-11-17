@@ -19,7 +19,7 @@ import { parseLedger } from '../ledger.mjs';
 import { printable, maskUrl } from '../terminal.mjs';
 import { secretScrubber } from '../live/keys.mjs';
 import { parseRotationConfig, pickRep, RotationConfigError } from './rotation.mjs';
-import { Journal, JournalTamperedError } from './journal.mjs';
+import { Journal, JournalTamperedError, JournalHeadMismatchError } from './journal.mjs';
 import { acquireLock, InboundLockedError } from './lock.mjs';
 import { tick, fold, openCounts } from './engine.mjs';
 import { fakeHubSpot, fakeSlack } from './fakes.mjs';
@@ -149,6 +149,7 @@ function printOutcomes(out, outcomes) {
 export async function verbInbound({ args, out, err, env, cwd, now, makeTransport }) {
   const live = args.includes('--live');
   const plan = args.includes('--plan');
+  const recover = args.includes('--recover');
   const at = flag(args, '--at');
 
   if (plan && !live) {
@@ -201,9 +202,9 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
     // A plan reads and writes nothing, so it takes no lock.
     let journal;
     try {
-      journal = Journal.open(journalPath, { readOnly: true });
+      journal = Journal.open(journalPath, { readOnly: true, accept: recover });
     } catch (error) {
-      if (!(error instanceof JournalTamperedError)) throw error;
+      if (!(error instanceof JournalTamperedError) && !(error instanceof JournalHeadMismatchError)) throw error;
       err(`${error.code}: ${error.message}`);
       return 1;
     }
@@ -222,7 +223,7 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
     return EXIT_LOCKED;
   }
   try {
-    return await lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock });
+    return await lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock, recover });
   } finally {
     lock.release();
   }
@@ -231,12 +232,12 @@ export async function verbInbound({ args, out, err, env, cwd, now, makeTransport
 /** Exit codes of `inbound`, documented in the README, "Inbound last mile". */
 export const EXIT_LOCKED = 3;
 
-async function lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock }) {
+async function lockedTick({ out, err, live, located, rotation, runId, events, refused, stateDir, journalPath, show, hubspotToken, slackToken, makeTransport, now, at, lock, recover }) {
   let journal;
   try {
-    journal = Journal.open(journalPath);
+    journal = Journal.open(journalPath, { accept: recover });
   } catch (error) {
-    if (!(error instanceof JournalTamperedError)) throw error;
+    if (!(error instanceof JournalTamperedError) && !(error instanceof JournalHeadMismatchError)) throw error;
     err(`${error.code}: ${error.message}`);
     return 1;
   }
@@ -265,7 +266,9 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
   const clock = live ? now : () => at ?? now();
   let report;
   try {
-    report = await tick({ events, rotation, journal, hubspot, slack, now: clock, scrub });
+    // --recover: every post this tick is looked for by marker first, whether or not the journal says
+    // one may exist, because the lines that would have said so may be the ones that were lost.
+    report = await tick({ events, rotation, journal, hubspot, slack, now: clock, scrub, uncertain: recover });
   } finally {
     save();
   }
@@ -274,6 +277,7 @@ async function lockedTick({ out, err, live, located, rotation, runId, events, re
   out(`  rotation  ${located.synthetic ? 'the committed synthetic reps' : show(located.path)}, ${rotation.response_minutes} minute response window`);
   if (lock.broke) out(`  lock      ${lock.broke}`);
   if (report.repaired) out(`  journal   ${report.repaired}`);
+  if (journal.recovered) out(`  recover   ${journal.recovered}`);
   out('');
   const outcomes = [...refused, ...report.outcomes];
   if (outcomes.length === 0) out('  nothing to do: no approved lead in the latest run is new, and no clock is running');

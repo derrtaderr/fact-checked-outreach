@@ -91,8 +91,11 @@ export function createSlackAdapter({ transport, token, scrub = (text) => text, t
       const opened = await ask('POST', `${SLACK_BASE}/conversations.open`, { users: channel });
       if (opened.json?.ok !== true) throw unsearchable(String(opened.json?.error ?? opened.status));
 
-      const from = Math.floor(Date.parse(oldest) / 1000) - SKEW_SECONDS;
-      const query = new URLSearchParams({ channel: opened.json.channel.id, oldest: String(from), limit: '200' });
+      // oldest null: after a recovery nothing says when the post may have been made, so the newest 200
+      // messages of the DM are searched.
+      const query = new URLSearchParams({ channel: opened.json.channel.id });
+      if (oldest !== null && oldest !== undefined) query.set('oldest', String(Math.floor(Date.parse(oldest) / 1000) - SKEW_SECONDS));
+      query.set('limit', '200');
       const history = await ask('GET', `${SLACK_BASE}/conversations.history?${query}`);
       if (history.json?.ok !== true) throw unsearchable(String(history.json?.error ?? history.status));
 
