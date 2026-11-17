@@ -95,6 +95,11 @@ command with a ceiling that is too small costs nothing and prints the count. Add
 a second way to invoke live that must stay in sync with the first, which is the class of bug this
 repo has already paid for once.
 
+> **Superseded 2026-11-16 (row 80, docs/CEILING-FINDINGS-SPEC.md, finding 3).** The refusal is free
+> only when the folder is over the ceiling; under it, the "preview" is the real, billed run.
+> `run --live --plan` is now the preview. It never builds a transport or runs a stage, and it counts
+> with the same function the refusal message uses, so the drift worry above does not apply to it.
+
 **Bad values refuse.** `--max-leads` with no value, `0`, a negative number, a fraction, anything
 that is not a plain positive decimal integer (`10abc`, `1e3`, `0x10`, ` 5`) refuses with
 `LEAD_CEILING_INVALID` and exit 2, before the credentials are even read, the same place an unknown

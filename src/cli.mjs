@@ -37,7 +37,7 @@ import {
   SECRET_VARIABLE,
 } from './live/config.mjs';
 import { loadLiveSignals, liveSignalFromBytes } from './live/signals.mjs';
-import { MODEL_CALLS_PER_LEAD, leadRequests } from './live/cost.mjs';
+import { MODEL_CALLS_PER_LEAD, leadRequests, runRequests } from './live/cost.mjs';
 import { writeDeadLetter, readDeadLetters, isDeadLetterable, dlqPath } from './live/dlq.mjs';
 import {
   loadDecisions,
@@ -71,7 +71,7 @@ Flags, per verb. Anything else is refused rather than ignored, so no invocation 
 become a different one than you typed. Write them as "--flag value", never "--flag=value",
 and give each value flag once: a repeated one is refused rather than guessed at.
 
-  run       --live, --signals <dir>, --max-leads <n>
+  run       --live, --signals <dir>, --max-leads <n>, --plan
   approve   --by <name>, --note <text>
   reject    --by <name>, --note <text>
   dlq       --replay, --max-leads <n>
@@ -94,7 +94,9 @@ faces exactly the gates the fixture demo shows.
 A live run bills per lead: its evidence fetches and ${MODEL_CALLS_PER_LEAD} model calls, which retries
 make up to ${leadRequests({}).modelCalls.worst} model attempts. So it has a lead ceiling: ${DEFAULT_MAX_LEADS} unless --max-leads <n> says
 otherwise. A signals folder holding more than the ceiling refuses to start, before anything is
-fetched, and names the count. dlq --replay is held to the same ceiling.
+fetched, and names the count. Under the ceiling the same command is the real, billed run, so to
+preview one use run --live --plan: it prints what would run and the request count, needs no key,
+fetches nothing and writes nothing. dlq --replay is held to the same ceiling.
 
 A live run captures what it observed, so it replays with no model key. Replaying also
 verifies every payload signature when SIGNAL_DESK_SIGNAL_SECRET is set; without it, the
@@ -167,6 +169,11 @@ async function verbRun({ args, out, err, env, cwd }) {
   if (flagPresent(args, '--max-leads')) {
     err('--max-leads bounds a live run, and a fixture run bills nothing, so it has no ceiling.');
     err('Did you mean: node bin/signal-desk.mjs run --live --max-leads <n>');
+    return 2;
+  }
+  if (flagPresent(args, '--plan')) {
+    err('--plan previews a live run, and a fixture run bills nothing, so there is nothing to preview.');
+    err('Did you mean: node bin/signal-desk.mjs run --live --plan');
     return 2;
   }
   const base = runsDir(env, cwd);
@@ -433,6 +440,8 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
   const maxLeads = maxLeadsFrom(args, err);
   if (maxLeads === null) return 2;
 
+  if (flagPresent(args, '--plan')) return planLive({ args, signalsDir, maxLeads, out, err });
+
   // Read AFTER the credential check inside executeLive, so a keyless invocation touches no files.
   // The loader is passed as a thunk rather than its result for exactly that reason.
   let key;
@@ -458,6 +467,60 @@ async function verbRunLive({ args, out, err, env, cwd, now, httpTransport }) {
   }
 
   return executeLive({ signals, dead, base, env, cwd, out, err, httpTransport, at, maxLeads });
+}
+
+// --- run --live --plan ------------------------------------------------------------------
+//
+// THE FREE PREVIEW. docs/CEILING-FINDINGS-SPEC.md, finding 3. The start refusal is free only because
+// it refuses; under the ceiling, the real command is the billed run. This reads the folder through
+// the same loader and counts with the same function the refusal message uses, and it never builds a
+// transport or runs a stage, so it cannot drift into being a second live mode. No credentials: it
+// contacts nobody and verifies nothing, which is also why its counts are upper bounds.
+function planLive({ args, signalsDir, maxLeads, out, err }) {
+  const { signals, dead, missingDir } = loadLiveSignals(signalsDir);
+  if (missingDir) {
+    err(`no signal directory at ${signalsDir}`);
+    err('live mode reads payload files. Point it somewhere with --signals <dir>, or see the');
+    err('live-mode section of the README for the file layout it expects.');
+    return 2;
+  }
+  if (signals.length === 0 && dead.length === 0) {
+    err(`${signalsDir} holds no .json payload files, so there is nothing to run`);
+    return 2;
+  }
+
+  const fromFlag = flagPresent(args, '--max-leads');
+  const over = signals.length > maxLeads;
+  const total = runRequests(signals);
+
+  out(`plan for run --live over ${signalsDir}`);
+  out('');
+  out(`  ${signals.length} payload(s) parsed${dead.length > 0 ? `, ${dead.length} that will not parse (a run would dead-letter them; they never bill)` : ''}`);
+  out(`  a ceiling of ${maxLeads} lead(s), ${fromFlag ? 'from your --max-leads' : 'the default'}`);
+  out('');
+  if (over) {
+    out('  This run would be refused at start with LEAD_CEILING_EXCEEDED, which bills nothing.');
+    out(`  To run all of it, split the folder, or type --max-leads ${signals.length} on purpose.`);
+    out('');
+    out('  Raised to run all of it, it could make:');
+  } else {
+    out('  This run would start. Typed without --plan, this is the real, billed run.');
+    out('');
+    out('  Requests it could make:');
+  }
+  out(`    expected    ${total.fetches.expected} fetch(es) and ${total.modelCalls.expected} model call(s), nothing retried`);
+  out(`    worst case  ${total.fetches.worst} fetch(es) and ${total.modelCalls.worst} model attempt(s), every retry taken`);
+  out(`    each model attempt asks for at most ${total.maxOutputTokensPerAttempt.toLocaleString('en-US')} output tokens`);
+  out('');
+  for (const signal of signals) {
+    const lead = leadRequests(signal);
+    out(`    ${pad(signal.id ?? signal.source_file, 22)} ${lead.urls} evidence URL(s)`);
+  }
+  out('');
+  out('  These are upper bounds. --plan does not verify signatures, so a payload ingest refuses is');
+  out('  counted here and bills nothing past ingest. The price per request is your provider\'s.');
+  out('  Nothing was fetched, no model was called and nothing was written.');
+  return 0;
 }
 
 // --- dlq ---------------------------------------------------------------------------------
@@ -949,7 +1012,7 @@ async function verbDashboard({ args, out, err, env, cwd }) {
 // forgetting the other.
 
 const ACCEPTED_FLAGS = Object.freeze({
-  run: ['--live', '--signals', '--max-leads'],
+  run: ['--live', '--signals', '--max-leads', '--plan'],
   queue: [],
   approve: ['--by', '--note'],
   reject: ['--by', '--note'],

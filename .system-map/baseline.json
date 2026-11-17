@@ -58,7 +58,7 @@
     {
       "path": "src/cli.mjs",
       "language": "node",
-      "contentHash": "f9cf31e1948d",
+      "contentHash": "1acc767e13e4",
       "cite": "src/cli.mjs:1"
     },
     {
@@ -112,7 +112,7 @@
     {
       "path": "src/kernel.mjs",
       "language": "node",
-      "contentHash": "6c8661a12e19",
+      "contentHash": "1d41db6e71ae",
       "cite": "src/kernel.mjs:1"
     },
     {
@@ -136,8 +136,14 @@
     {
       "path": "src/live/config.mjs",
       "language": "node",
-      "contentHash": "c98a43a93b62",
+      "contentHash": "270a7a44a6c3",
       "cite": "src/live/config.mjs:1"
+    },
+    {
+      "path": "src/live/cost.mjs",
+      "language": "node",
+      "contentHash": "4ff9a4a96209",
+      "cite": "src/live/cost.mjs:1"
     },
     {
       "path": "src/live/dlq.mjs",
@@ -627,8 +633,8 @@
       "from": "src/cli.mjs",
       "specifier": "./live/config.mjs",
       "kind": "import",
-      "line": 31,
-      "cite": "src/cli.mjs:31",
+      "line": 38,
+      "cite": "src/cli.mjs:38",
       "to": "src/live/config.mjs",
       "external": false,
       "builtin": false
@@ -637,9 +643,19 @@
       "from": "src/cli.mjs",
       "specifier": "./live/signals.mjs",
       "kind": "import",
-      "line": 32,
-      "cite": "src/cli.mjs:32",
+      "line": 39,
+      "cite": "src/cli.mjs:39",
       "to": "src/live/signals.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/cli.mjs",
+      "specifier": "./live/cost.mjs",
+      "kind": "import",
+      "line": 40,
+      "cite": "src/cli.mjs:40",
+      "to": "src/live/cost.mjs",
       "external": false,
       "builtin": false
     },
@@ -647,8 +663,8 @@
       "from": "src/cli.mjs",
       "specifier": "./live/dlq.mjs",
       "kind": "import",
-      "line": 33,
-      "cite": "src/cli.mjs:33",
+      "line": 41,
+      "cite": "src/cli.mjs:41",
       "to": "src/live/dlq.mjs",
       "external": false,
       "builtin": false
@@ -657,8 +673,8 @@
       "from": "src/cli.mjs",
       "specifier": "./decisions.mjs",
       "kind": "import",
-      "line": 40,
-      "cite": "src/cli.mjs:40",
+      "line": 48,
+      "cite": "src/cli.mjs:48",
       "to": "src/decisions.mjs",
       "external": false,
       "builtin": false
@@ -667,8 +683,8 @@
       "from": "src/cli.mjs",
       "specifier": "./kernel.mjs",
       "kind": "import",
-      "line": 41,
-      "cite": "src/cli.mjs:41",
+      "line": 49,
+      "cite": "src/cli.mjs:49",
       "to": "src/kernel.mjs",
       "external": false,
       "builtin": false
@@ -677,8 +693,8 @@
       "from": "src/cli.mjs",
       "specifier": "./ledger.mjs",
       "kind": "import",
-      "line": 42,
-      "cite": "src/cli.mjs:42",
+      "line": 50,
+      "cite": "src/cli.mjs:50",
       "to": "src/ledger.mjs",
       "external": false,
       "builtin": false
@@ -687,8 +703,8 @@
       "from": "src/cli.mjs",
       "specifier": "./adapters.mjs",
       "kind": "import",
-      "line": 43,
-      "cite": "src/cli.mjs:43",
+      "line": 51,
+      "cite": "src/cli.mjs:51",
       "to": "src/adapters.mjs",
       "external": false,
       "builtin": false
@@ -697,8 +713,8 @@
       "from": "src/cli.mjs",
       "specifier": "./dashboard.mjs",
       "kind": "import",
-      "line": 44,
-      "cite": "src/cli.mjs:44",
+      "line": 52,
+      "cite": "src/cli.mjs:52",
       "to": "src/dashboard.mjs",
       "external": false,
       "builtin": false
@@ -990,6 +1006,26 @@
       "line": 26,
       "cite": "src/live/config.mjs:26",
       "to": "src/live/anthropic.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/cost.mjs",
+      "specifier": "./anthropic.mjs",
+      "kind": "import",
+      "line": 16,
+      "cite": "src/live/cost.mjs:16",
+      "to": "src/live/anthropic.mjs",
+      "external": false,
+      "builtin": false
+    },
+    {
+      "from": "src/live/cost.mjs",
+      "specifier": "./http.mjs",
+      "kind": "import",
+      "line": 17,
+      "cite": "src/live/cost.mjs:17",
+      "to": "src/live/http.mjs",
       "external": false,
       "builtin": false
     },
@@ -1402,10 +1438,10 @@
     {
       "name": "SIGNAL_DESK_RUNS_DIR",
       "how": "via an injected env object",
-      "line": 92,
+      "line": 108,
       "path": "src/cli.mjs",
       "secretish": false,
-      "cite": "src/cli.mjs:92",
+      "cite": "src/cli.mjs:108",
       "alsoAt": []
     }
   ],
@@ -1468,14 +1504,14 @@
       "call": "writeFileSync",
       "target": "path",
       "path": "src/cli.mjs",
-      "line": 145,
-      "cite": "src/cli.mjs:145",
+      "line": 161,
+      "cite": "src/cli.mjs:161",
       "alsoWrites": 4,
       "alsoAt": [
-        "src/cli.mjs:179",
-        "src/cli.mjs:184",
-        "src/cli.mjs:227",
-        "src/cli.mjs:848"
+        "src/cli.mjs:207",
+        "src/cli.mjs:212",
+        "src/cli.mjs:255",
+        "src/cli.mjs:976"
       ],
       "targets": [
         "path",
@@ -1503,6 +1539,10 @@
     "test/adversarial.test.mjs",
     "test/approval-workflow.test.mjs",
     "test/canonical.test.mjs",
+    "test/ceiling-fail-closed.test.mjs",
+    "test/cli-ceiling.test.mjs",
+    "test/cli-flag-values.test.mjs",
+    "test/cli-plan.test.mjs",
     "test/cli.test.mjs",
     "test/context.test.mjs",
     "test/contract-conformance.test.mjs",
@@ -1516,9 +1556,12 @@
     "test/injection.test.mjs",
     "test/kernel.test.mjs",
     "test/key-hygiene.test.mjs",
+    "test/lead-ceiling.test.mjs",
     "test/ledger.test.mjs",
     "test/live-capture.test.mjs",
+    "test/live-ceiling.test.mjs",
     "test/live-cli.test.mjs",
+    "test/live-cost.test.mjs",
     "test/live-http.test.mjs",
     "test/live-model.test.mjs",
     "test/live-secret.test.mjs",
@@ -1542,8 +1585,8 @@
   ],
   "gaps": [],
   "counts": {
-    "modules": 40,
-    "edges": 114,
+    "modules": 41,
+    "edges": 117,
     "manifests": 1,
     "env": 1,
     "routes": 0,
@@ -1554,9 +1597,9 @@
     "authChecks": 0,
     "writes": 6,
     "shells": 0,
-    "testFiles": 40,
+    "testFiles": 47,
     "gaps": 0,
     "blockingGaps": 0
   },
-  "generated_at": "2026-09-28T01:14:55.869Z"
+  "generated_at": "2026-11-17T01:48:48.093Z"
 }

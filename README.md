@@ -429,8 +429,18 @@ $ node bin/signal-desk.mjs run --live --signals ./signals --max-leads 25
 
 A signals folder holding more payloads than the ceiling refuses to start with
 `LEAD_CEILING_EXCEEDED`, naming the count and the ceiling, before a single URL is fetched or a
-model is called, and writes nothing. That refusal is free, so it doubles as the preview; there is no
-separate dry run. `dlq --replay` is held to the same ceiling and takes the same flag, because a
+model is called, and writes nothing. That refusal is free only because it refuses. **Under the
+ceiling, the same command is the real, billed run**, so do not use it as a preview. The preview is
+`--plan`:
+
+```console
+$ node bin/signal-desk.mjs run --live --plan --signals ./signals
+```
+
+It reads the folder the run would read and prints whether the run would start or be refused, the
+evidence URLs per lead, and the expected and worst-case request counts from the table above. It
+needs no key and no secret, fetches nothing, calls no model and writes nothing. It does not verify
+signatures, so its counts are upper bounds. `dlq --replay` is held to the same ceiling and takes the same flag, because a
 re-fed lead bills like a fresh one. A ceiling of zero, a negative one, or anything that is not a
 whole number refuses with `LEAD_CEILING_INVALID`, and `--max-leads` on a fixture `run` refuses
 rather than being ignored, since a fixture run bills nothing. `--max-leads` given twice refuses with

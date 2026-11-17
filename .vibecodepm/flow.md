@@ -194,6 +194,8 @@ contacted a stranger's server on the strength of a run it could not finish.
 | More signals than the lead ceiling | `LEAD_CEILING_EXCEEDED`, naming the count, the ceiling and `--max-leads <n>`; nothing fetched, nothing written | 2 |
 | `--max-leads` of 0, negative, non-numeric or missing | `LEAD_CEILING_INVALID`, before the credentials are read | 2 |
 | `--max-leads` on a fixture `run`, or on `dlq` without `--replay` | why the flag does not apply there, and the invocation that takes it | 2 |
+| `run --live --plan` | whether the run would start or be refused, the per-lead URLs and the request counts; no key needed, nothing fetched or written | 0 |
+| `--plan` on a fixture `run` | why it does not apply there, and `run --live --plan` | 2 |
 | Live run completes | the same run summary as fixture mode, plus a replay line and a dlq line if anything was dead-lettered | 0 |
 | Unknown or malformed flag | the flag it did not understand, and what the verb accepts | 2 |
 | A value flag given twice (`--max-leads 500 --max-leads 5`) | `FLAG_REPEATED`, naming the flag and every value; nothing read, fetched or written | 2 |
@@ -266,8 +268,18 @@ run --live --signals ./signals --max-leads 11  runs
 dlq --replay --max-leads <n>                   the same ceiling, because a re-fed lead bills like a fresh one
 ```
 
-The start refusal is the one a walker meets, and it is also the preview: it runs before any network
-call, so a too-small ceiling costs nothing and prints the count. There is no separate dry run.
+The start refusal is the one a walker meets. It is free because it refuses: it runs before any
+network call, so a too-small ceiling costs nothing and prints the count. It is NOT a preview, because
+under the ceiling the same command is the real, billed run. The preview is `run --live --plan`
+(`docs/CEILING-FINDINGS-SPEC.md`, finding 3):
+
+```
+run --live --plan --signals ./signals          what would run, per-lead URLs, expected and worst-case requests; exit 0
+run --plan                                     refused, exit 2: a fixture run bills nothing, so there is nothing to preview
+```
+
+`--plan` needs no credentials, contacts nobody, verifies nothing and writes nothing, so its counts
+are upper bounds and it says so.
 
 Behind it, the kernel stops a run AT the ceiling whatever its caller checked: a lead admitted past
 the ceiling never runs `enrich` or anything after it, and gets its own `REFUSE` line with reason
