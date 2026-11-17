@@ -445,8 +445,8 @@ Each line of a tick's output is one lead in one of these states.
 | `NO_REP_RESPONDED` | every rep in the pool had it untouched | it stays with the last rep and needs a person |
 | `REASSIGN_WAITING` | past the window, but every untried rep is away or at capacity (`NO_ELIGIBLE_REP`), or the lead's pool was removed from the rotation file (`NO_ROTATION_FOR_POOL`) or emptied (`ROTATION_EMPTY`) | stays with the current rep and nothing is journaled; the next tick tries again, so restoring the pool resumes it |
 | `CLOCK_CHECK_FAILED` | HubSpot could not be read at a clock check | nothing is reassigned on a guess; the next tick reads again |
-| `CRM_PENDING` | HubSpot did not take the owner | nobody is told; the next tick writes the same rep again |
-| `SLACK_PENDING` | the owner is written; Slack refused the post (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) | the next tick posts it |
+| `CRM_PENDING` | HubSpot did not take the owner | nobody is told; the next tick writes the same rep again, reading their `hubspot_owner_id` from the rotation file as it is then. A refusal that cannot clear on its own (`HUBSPOT_INVALID_OWNER`, `HUBSPOT_UNAUTHORIZED`, `HUBSPOT_SCOPE_MISSING`) says what to fix instead of promising the retry works |
+| `SLACK_PENDING` | the owner is written; Slack refused the post (`SLACK_REJECTED`, `SLACK_RATE_LIMITED`) | the next tick posts it, to the rep's `slack_user_id` as the rotation file has it then; `SLACK_REJECTED` says to correct that id if Slack named the channel |
 | `SLACK_UNCONFIRMED` | a post may have landed (`SLACK_UNREACHABLE`) | the next tick looks for it by marker; if Slack cannot be searched (`SLACK_UNSEARCHABLE`) it is never posted again |
 | `LEAD_ALREADY_ASSIGNED` | the same person under a new signal id | skipped; takes no turn |
 | `REFUSED` | assigned nobody, with a code below | the rotation did not move |
