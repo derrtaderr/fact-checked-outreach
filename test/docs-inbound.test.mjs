@@ -80,3 +80,24 @@ test('the frontmatter of flow.md and metrics.md says they match this build', () 
     assert.match(read(file).split('---')[1], /row157/);
   }
 });
+
+// Review pass 2, item 4: two promises the code does not keep. --recover looks only for the marker of
+// the attempt it makes, so after a lost reassignment one rep can be told twice (probe7 F2b); and a lead
+// parked ALREADY_OWNED is never retried, so setting overwrite_owner later does not take it over.
+test('item 4: README and spec state the --recover limit where they promise no rep is told twice', () => {
+  const readme = flat(section(read('README.md'), '### If the journal was cut short'));
+  assert.match(readme, /only for the marker of the attempt it is making/);
+  assert.match(readme, /lost lines held a reassignment/);
+  assert.match(readme, /told about the same lead twice/);
+  const spec = flat(read('docs/INBOUND-SPEC.md'));
+  assert.doesNotMatch(spec, /Nothing is reposted\./);
+  assert.match(spec, /only for the marker of the attempt it is making/);
+  assert.match(spec, /told about the same lead twice/);
+});
+
+test('item 4: README says overwrite_owner applies to leads seen after it is set, and what to do with one already parked', () => {
+  const inbound = flat(section(read('README.md'), '## Inbound last mile'));
+  assert.doesNotMatch(inbound, /only if you want the rotation to take those leads over/);
+  assert.match(inbound, /applies to leads the tool meets after it is set/);
+  assert.match(inbound, /already parked as `ALREADY_OWNED` is not retried/);
+});
