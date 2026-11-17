@@ -106,6 +106,12 @@ one request; the ceiling bounds how many leads make requests. Worst case per run
 `maxLeads × (evidence URLs per payload × (1 + retries) + 2 model calls of max_tokens)`. Nothing else
 changes.
 
+> **Corrected 2026-11-16 (row 80, docs/CEILING-FINDINGS-SPEC.md, finding 4).** The formula above
+> under-counts the model: each of the two model calls is also retried, so the worst case is
+> `maxLeads × (U × 3 fetches + 2 × 3 = 6 model attempts of at most 2,048 output tokens)`, where U is
+> the evidence URLs a payload cites plus one for an identity source. `src/live/cost.mjs` computes it
+> from the transports' constants.
+
 ## Gate commands
 
 ```console
